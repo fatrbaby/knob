@@ -87,6 +87,9 @@ abstract class Grammar
     protected function compileFrom(array $from): string
     {
         [$table, $alias] = $from;
+        if (! $table) {
+            return '';
+        }
         if ($alias) {
             return $this->quoteIdentifier($table) . ' AS ' . $this->quoteIdentifier($alias);
         }
@@ -118,7 +121,9 @@ abstract class Grammar
     {
         $conditions = [];
         foreach ($wheres as $where) {
-            $conditions[] = $this->compileWhere($where);
+            $sql = $this->compileWhere($where);
+            $boolean = $where['boolean'] ?? 'AND';
+            $conditions[] = $boolean === 'OR' ? "({$sql})" : $sql;
         }
         return implode(' AND ', $conditions);
     }
@@ -136,6 +141,8 @@ abstract class Grammar
             'notNull' => $this->compileWhereNotNull($where),
             'sub' => $this->compileWhereSub($where),
             'exists' => $this->compileWhereExists($where),
+            'group' => $this->compileWhereGroup($where),
+            'raw' => $this->compileWhereRaw($where),
             default => throw new \RuntimeException("Unknown where type: {$type}"),
         };
     }
@@ -150,66 +157,56 @@ abstract class Grammar
         $sql = "{$column} {$operator} ?";
         $this->addBinding($value, 'where');
 
-        return $boolean === 'OR' ? "({$sql})" : $sql;
+        return $sql;
     }
 
     protected function compileWhereIn(array $where): string
     {
         $column = $where['column'];
         $values = $where['values'];
-        $boolean = $where['boolean'] ?? 'AND';
 
         $placeholders = implode(', ', array_fill(0, count($values), '?'));
         $this->addBinding($values, 'where');
 
-        $sql = "{$column} IN ({$placeholders})";
-        return $boolean === 'OR' ? "({$sql})" : $sql;
+        return "{$column} IN ({$placeholders})";
     }
 
     protected function compileWhereNotIn(array $where): string
     {
         $column = $where['column'];
         $values = $where['values'];
-        $boolean = $where['boolean'] ?? 'AND';
 
         $placeholders = implode(', ', array_fill(0, count($values), '?'));
         $this->addBinding($values, 'where');
 
-        $sql = "{$column} NOT IN ({$placeholders})";
-        return $boolean === 'OR' ? "({$sql})" : $sql;
+        return "{$column} NOT IN ({$placeholders})";
     }
 
     protected function compileWhereBetween(array $where): string
     {
         $column = $where['column'];
         $values = $where['values'];
-        $boolean = $where['boolean'] ?? 'AND';
         $not = $where['not'] ?? false;
 
         $this->addBinding($values[0], 'where');
         $this->addBinding($values[1], 'where');
 
         $op = $not ? 'NOT BETWEEN' : 'BETWEEN';
-        $sql = "{$column} {$op} ? AND ?";
-        return $boolean === 'OR' ? "({$sql})" : $sql;
+        return "{$column} {$op} ? AND ?";
     }
 
     protected function compileWhereNull(array $where): string
     {
         $column = $where['column'];
-        $boolean = $where['boolean'] ?? 'AND';
 
-        $sql = "{$column} IS NULL";
-        return $boolean === 'OR' ? "({$sql})" : $sql;
+        return "{$column} IS NULL";
     }
 
     protected function compileWhereNotNull(array $where): string
     {
         $column = $where['column'];
-        $boolean = $where['boolean'] ?? 'AND';
 
-        $sql = "{$column} IS NOT NULL";
-        return $boolean === 'OR' ? "({$sql})" : $sql;
+        return "{$column} IS NOT NULL";
     }
 
     protected function compileWhereSub(array $where): string
@@ -226,13 +223,12 @@ abstract class Grammar
             }
         }
 
-        return $boolean === 'OR' ? "({$sql})" : $sql;
+        return $sql;
     }
 
     protected function compileWhereExists(array $where): string
     {
         $query = $where['query'];
-        $boolean = $where['boolean'] ?? 'AND';
         $not = $where['not'] ?? false;
 
         $op = $not ? 'NOT EXISTS' : 'EXISTS';
@@ -243,7 +239,39 @@ abstract class Grammar
             }
         }
 
-        return $boolean === 'OR' ? "({$sql})" : $sql;
+        return $sql;
+    }
+
+    protected function compileWhereGroup(array $where): string
+    {
+        $wheres = $where['wheres'];
+        if (empty($wheres)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($wheres as $i => $w) {
+            $sql = $this->compileWhere($w);
+            if ($i === 0) {
+                $parts[] = $sql;
+            } else {
+                $boolean = $w['boolean'] ?? 'AND';
+                $parts[] = "{$boolean} {$sql}";
+            }
+        }
+
+        return '(' . implode(' ', $parts) . ')';
+    }
+
+    protected function compileWhereRaw(array $where): string
+    {
+        $sql = $where['sql'];
+
+        foreach ($where['bindings'] ?? [] as $binding) {
+            $this->addBinding($binding, 'where');
+        }
+
+        return $sql;
     }
 
     protected function compileGroups(array $groups): string

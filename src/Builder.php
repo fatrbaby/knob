@@ -122,8 +122,21 @@ class Builder
         return $this;
     }
 
-    public function where(string $column, string $operator, mixed $value = null): Builder
+    public function where(string|Closure $column, mixed $operator = null, mixed $value = null): Builder
     {
+        if ($column instanceof Closure) {
+            $subBuilder = new self($this->connection);
+            $column($subBuilder);
+
+            $this->wheres[] = [
+                'type' => 'group',
+                'wheres' => $subBuilder->wheres,
+                'boolean' => 'AND',
+            ];
+
+            return $this;
+        }
+
         if ($value === null) {
             $value = $operator;
             $operator = '=';
@@ -139,8 +152,21 @@ class Builder
         return $this;
     }
 
-    public function orWhere(string $column, string $operator, mixed $value = null): Builder
+    public function orWhere(string|Closure $column, mixed $operator = null, mixed $value = null): Builder
     {
+        if ($column instanceof Closure) {
+            $subBuilder = new self($this->connection);
+            $column($subBuilder);
+
+            $this->wheres[] = [
+                'type' => 'group',
+                'wheres' => $subBuilder->wheres,
+                'boolean' => 'OR',
+            ];
+
+            return $this;
+        }
+
         if ($value === null) {
             $value = $operator;
             $operator = '=';
@@ -248,6 +274,28 @@ class Builder
         $this->wheres[] = [
             'type' => 'notNull',
             'column' => $column,
+            'boolean' => 'OR',
+        ];
+        return $this;
+    }
+
+    public function whereRaw(string $sql, array $bindings = []): Builder
+    {
+        $this->wheres[] = [
+            'type' => 'raw',
+            'sql' => $sql,
+            'bindings' => $bindings,
+            'boolean' => 'AND',
+        ];
+        return $this;
+    }
+
+    public function orWhereRaw(string $sql, array $bindings = []): Builder
+    {
+        $this->wheres[] = [
+            'type' => 'raw',
+            'sql' => $sql,
+            'bindings' => $bindings,
             'boolean' => 'OR',
         ];
         return $this;

@@ -49,6 +49,73 @@ describe('Builder', function () {
         });
     });
 
+    describe('whereGroup', function () {
+        it('generates basic nested AND group', function () {
+            $sql = Knob::table('users')->where('status', 'active')->where(fn ($q) => $q->where('type', 'A')->orWhere('type', 'B'))->toSql();
+            expect($sql['sql'])->toContain('status = ?');
+            expect($sql['sql'])->toContain('(type = ? OR type = ?)');
+        });
+
+        it('generates nested group with AND conditions inside', function () {
+            $sql = Knob::table('users')->where(fn ($q) => $q->where('a', 1)->where('b', 2))->toSql();
+            expect($sql['sql'])->toContain('(a = ? AND b = ?)');
+        });
+
+        it('generates multiple nested groups at same level', function () {
+            $sql = Knob::table('users')
+                ->where(fn ($q) => $q->where('a', 1)->orWhere('b', 2))
+                ->where(fn ($q) => $q->where('c', 3)->orWhere('d', 4))
+                ->toSql();
+            expect($sql['sql'])->toContain('(a = ? OR b = ?)');
+            expect($sql['sql'])->toContain('(c = ? OR d = ?)');
+        });
+
+        it('generates deeply nested groups (2 levels)', function () {
+            $sql = Knob::table('users')
+                ->where('x', 1)
+                ->where(fn ($q) => $q->where(fn ($r) => $r->where('a', 'A')->orWhere('b', 'B'))->where('y', 2))
+                ->toSql();
+            expect($sql['sql'])->toContain('x = ?');
+            expect($sql['sql'])->toContain('((a = ? OR b = ?) AND y = ?)');
+        });
+
+        it('preserves bindings order across groups', function () {
+            $sql = Knob::table('users')
+                ->where('a', 1)
+                ->where(fn ($q) => $q->where('b', 2)->orWhere('c', 3))
+                ->where('d', 4)
+                ->toSql();
+            expect($sql['bindings'])->toBe([1, 2, 3, 4]);
+        });
+
+        it('handles whereIn inside group', function () {
+            $sql = Knob::table('users')->where(fn ($q) => $q->whereIn('id', [1, 2, 3]))->toSql();
+            expect($sql['sql'])->toContain('(id IN (?, ?, ?))');
+            expect($sql['bindings'])->toBe([1, 2, 3]);
+        });
+
+        it('handles whereBetween inside group', function () {
+            $sql = Knob::table('users')->where(fn ($q) => $q->whereBetween('age', [18, 30]))->toSql();
+            expect($sql['sql'])->toContain('(age BETWEEN ? AND ?)');
+            expect($sql['bindings'])->toBe([18, 30]);
+        });
+
+        it('handles whereNull / whereNotNull inside group', function () {
+            $sql = Knob::table('users')->where(fn ($q) => $q->whereNull('deleted_at')->orWhereNotNull('active'))->toSql();
+            expect($sql['sql'])->toContain('(deleted_at IS NULL OR active IS NOT NULL)');
+        });
+
+        it('handles whereExists inside group', function () {
+            $sql = Knob::table('users')->where(fn ($q) => $q->whereExists(fn ($sub) => $sub->from('posts', 'p')->whereRaw('p.user_id = users.id')))->toSql();
+            expect($sql['sql'])->toContain('(EXISTS');
+        });
+
+        it('handles group at top level with no outer conditions', function () {
+            $sql = Knob::table('users')->where(fn ($q) => $q->where('a', 1)->orWhere('b', 2))->toSql();
+            expect($sql['sql'])->toContain('(a = ? OR b = ?)');
+        });
+    });
+
     describe('whereIn', function () {
         it('generates whereIn clause', function () {
             $sql = Knob::table('users')->whereIn('id', [1, 2, 3])->toSql();
