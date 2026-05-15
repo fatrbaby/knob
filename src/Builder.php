@@ -393,7 +393,7 @@ class Builder
         $components = [
             'table' => $this->table,
             'columns' => $columns,
-            'values' => array_map(fn($v) => array_values($v), array_values($values)),
+            'values' => array_map(fn ($v) => array_values($v), array_values($values)),
         ];
 
         $sql = $this->grammar->compileInsert($components);

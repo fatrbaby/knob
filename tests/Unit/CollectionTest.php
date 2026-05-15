@@ -45,7 +45,7 @@ describe('Collection', function () {
 
     describe('map', function () {
         it('returns new collection with mapped items', function () {
-            $mapped = $this->collection->map(fn($item) => $item['name']);
+            $mapped = $this->collection->map(fn ($item) => $item['name']);
             expect($mapped)->toBeInstanceOf(Collection::class);
             expect($mapped->toArray())->toBe(['John', 'Jane', 'Bob']);
         });
@@ -63,8 +63,8 @@ describe('Collection', function () {
 
         it('chains with filter', function () {
             $result = $this->collection
-                ->map(fn($item) => $item['name'])
-                ->filter(fn($name) => str_starts_with($name, 'J'))
+                ->map(fn ($item) => $item['name'])
+                ->filter(fn ($name) => str_starts_with($name, 'J'))
                 ->toArray();
             expect($result)->toBe(['John', 'Jane']);
         });
@@ -72,13 +72,13 @@ describe('Collection', function () {
 
     describe('filter', function () {
         it('returns new collection with filtered items', function () {
-            $filtered = $this->collection->filter(fn($item) => $item['age'] > 25);
+            $filtered = $this->collection->filter(fn ($item) => $item['age'] > 25);
             expect($filtered->count())->toBe(1);
             expect($filtered->first()['name'])->toBe('Jane');
         });
 
         it('returns false items as filtered out', function () {
-            $filtered = $this->collection->filter(fn($item) => $item['age'] > 25);
+            $filtered = $this->collection->filter(fn ($item) => $item['age'] > 25);
             expect($filtered->toArray())->not->toContain('John');
         });
     });

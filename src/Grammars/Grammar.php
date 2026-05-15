@@ -3,7 +3,6 @@
 namespace Knob\Grammars;
 
 use BackedEnum;
-use Closure;
 
 abstract class Grammar
 {
@@ -250,7 +249,7 @@ abstract class Grammar
     protected function compileGroups(array $groups): string
     {
         return implode(', ', array_map(
-            fn($group) => $this->isQualified($group) ? $group : $this->quoteIdentifier($group),
+            fn ($group) => $this->isQualified($group) ? $group : $this->quoteIdentifier($group),
             $groups
         ));
     }
@@ -288,7 +287,7 @@ abstract class Grammar
     protected function compileOrders(array $orders): string
     {
         return 'ORDER BY ' . implode(', ', array_map(
-            fn($order) => $order['column'] . ' ' . $order['direction'],
+            fn ($order) => $order['column'] . ' ' . $order['direction'],
             $orders
         ));
     }
@@ -310,7 +309,7 @@ abstract class Grammar
     {
         $table = $this->quoteIdentifier($components['table']);
         $columns = implode(', ', array_map(
-            fn($col) => $this->quoteIdentifier($col),
+            fn ($col) => $this->quoteIdentifier($col),
             $components['columns']
         ));
         $placeholders = implode(', ', array_fill(0, count($components['values']), '(' . implode(', ', array_fill(0, count($components['values'][0]), '?')) . ')'));
