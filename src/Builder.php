@@ -473,11 +473,12 @@ class Builder
             throw new \RuntimeException('Table not set for insert');
         }
 
-        $columns = array_keys(is_array($values[0] ?? null) ? $values[0] : $values);
+        $rows = is_array($values[0] ?? null) ? array_values($values) : [$values];
+        $columns = array_keys($rows[0]);
         $components = [
             'table' => $this->table,
             'columns' => $columns,
-            'values' => array_map(fn ($v) => array_values($v), array_values($values)),
+            'values' => array_map(fn ($row) => array_values($row), $rows),
         ];
 
         $sql = $this->grammar->compileInsert($components);
@@ -505,7 +506,7 @@ class Builder
         ];
 
         $sql = $this->grammar->compileUpdate($components);
-        $bindings = $this->grammar->getBindings();
+        $bindings = $this->grammar->getUpdateBindings();
         $this->grammar->resetBindings();
 
         $stmt = $this->connection->prepare($sql);
@@ -521,7 +522,7 @@ class Builder
         ];
 
         $sql = $this->grammar->compileDelete($components);
-        $bindings = $this->grammar->getBindings();
+        $bindings = $this->grammar->getDeleteBindings();
         $this->grammar->resetBindings();
 
         $stmt = $this->connection->prepare($sql);
@@ -642,12 +643,15 @@ class Builder
 
     public function paginate(int $perPage = 15, int $page = 1): array
     {
-        $total = $this->count();
+        $countBuilder = $this->clone();
+        $itemsBuilder = $this->clone();
 
-        $this->limit = $perPage;
-        $this->offset = ($page - 1) * $perPage;
-
-        $items = $this->get()->toArray();
+        $total = $countBuilder->count();
+        $items = $itemsBuilder
+            ->limit($perPage)
+            ->offset(($page - 1) * $perPage)
+            ->get()
+            ->toArray();
 
         return [
             'items' => $items,

@@ -402,6 +402,9 @@ abstract class Grammar
 
     public function compileUpdate(array $components): string
     {
+        $this->bindings['update'] = [];
+        $this->bindings['where'] = [];
+
         $table = $this->quoteIdentifier($components['table']);
         $sets = [];
 
@@ -421,6 +424,8 @@ abstract class Grammar
 
     public function compileDelete(array $components): string
     {
+        $this->bindings['where'] = [];
+
         $table = $this->quoteIdentifier($components['table']);
 
         $sql = "DELETE FROM {$table}";
@@ -451,6 +456,19 @@ abstract class Grammar
             $this->bindings['insert'],
             $this->bindings['update']
         );
+    }
+
+    public function getUpdateBindings(): array
+    {
+        return array_merge(
+            $this->bindings['update'],
+            $this->bindings['where']
+        );
+    }
+
+    public function getDeleteBindings(): array
+    {
+        return $this->bindings['where'];
     }
 
     public function resetBindings(): void
