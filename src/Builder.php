@@ -14,6 +14,7 @@ class Builder
 
     private array $columns = ['*'];
     private array $joins = [];
+    private array $fromBindings = [];
     private array $wheres = [];
     private array $groups = [];
     private array $havings = [];
@@ -101,12 +102,14 @@ class Builder
     {
         $subBuilder = new self($this->connection);
         $callback($subBuilder);
-        $sql = $subBuilder->toSql()['sql'];
+        $subQuery = $subBuilder->toSql();
+        $sql = $subQuery['sql'];
 
         $this->joins[] = [
             'type' => 'INNER JOIN',
             'table' => "({$sql}) AS {$this->grammar->quoteIdentifier($as)}",
             'clauses' => $first ? [[$first, $operator, $second]] : [],
+            'bindings' => $subQuery['bindings'],
         ];
         return $this;
     }
@@ -115,10 +118,12 @@ class Builder
     {
         $subBuilder = new self($this->connection);
         $callback($subBuilder);
-        $sql = $subBuilder->toSql()['sql'];
+        $subQuery = $subBuilder->toSql();
+        $sql = $subQuery['sql'];
 
         $this->table = "({$sql})";
         $this->alias = $as;
+        $this->fromBindings = $subQuery['bindings'];
         return $this;
     }
 
@@ -416,10 +421,12 @@ class Builder
     {
         $subBuilder = new self($this->connection);
         $callback($subBuilder);
+        $subQuery = $subBuilder->toSql();
 
         $this->unions[] = [
             'all' => $all,
-            'sql' => $subBuilder->toSql()['sql'],
+            'sql' => $subQuery['sql'],
+            'bindings' => $subQuery['bindings'],
         ];
         return $this;
     }
@@ -626,7 +633,7 @@ class Builder
     {
         return [
             'columns' => $this->columns,
-            'from' => [$this->table, $this->alias],
+            'from' => [$this->table, $this->alias, $this->fromBindings],
             'joins' => $this->joins,
             'wheres' => $this->wheres,
             'groups' => $this->groups,
@@ -655,6 +662,7 @@ class Builder
         $builder->alias = $this->alias;
         $builder->columns = $this->columns;
         $builder->joins = $this->joins;
+        $builder->fromBindings = $this->fromBindings;
         $builder->wheres = $this->wheres;
         $builder->groups = $this->groups;
         $builder->havings = $this->havings;

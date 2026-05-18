@@ -86,14 +86,18 @@ abstract class Grammar
 
     protected function compileFrom(array $from): string
     {
-        [$table, $alias] = $from;
+        [$table, $alias, $bindings] = array_pad($from, 3, []);
         if (! $table) {
             return '';
         }
-        if ($alias) {
-            return $this->quoteIdentifier($table) . ' AS ' . $this->quoteIdentifier($alias);
+        foreach ($bindings as $binding) {
+            $this->addBinding($binding, 'from');
         }
-        return $this->quoteIdentifier($table);
+        $tableSql = str_starts_with($table, '(') ? $table : $this->quoteIdentifier($table);
+        if ($alias) {
+            return $tableSql . ' AS ' . $this->quoteIdentifier($alias);
+        }
+        return $tableSql;
     }
 
     protected function compileJoins(array $joins): string
@@ -103,8 +107,17 @@ abstract class Grammar
             $type = $join['type'];
             $table = $join['table'];
             $clauses = $join['clauses'];
+            $tableSql = str_starts_with($table, '(') ? $table : $this->quoteIdentifier($table);
+            foreach ($join['bindings'] ?? [] as $binding) {
+                $this->addBinding($binding, 'join');
+            }
 
-            $sql[] = "{$type} JOIN {$this->quoteIdentifier($table)} ON " . $this->compileJoinClauses($clauses);
+            if ($type === 'CROSS JOIN') {
+                $sql[] = "{$type} {$tableSql}";
+                continue;
+            }
+
+            $sql[] = "{$type} {$tableSql} ON " . $this->compileJoinClauses($clauses);
         }
         return implode(' ', $sql);
     }
@@ -120,12 +133,17 @@ abstract class Grammar
     protected function compileWheres(array $wheres): string
     {
         $conditions = [];
-        foreach ($wheres as $where) {
+        foreach ($wheres as $i => $where) {
             $sql = $this->compileWhere($where);
+            if ($i === 0) {
+                $conditions[] = $sql;
+                continue;
+            }
+
             $boolean = $where['boolean'] ?? 'AND';
-            $conditions[] = $boolean === 'OR' ? "({$sql})" : $sql;
+            $conditions[] = "{$boolean} {$sql}";
         }
-        return implode(' AND ', $conditions);
+        return implode(' ', $conditions);
     }
 
     protected function compileWhere(array $where): string
@@ -165,6 +183,10 @@ abstract class Grammar
         $column = $where['column'];
         $values = $where['values'];
 
+        if (empty($values)) {
+            return '0 = 1';
+        }
+
         $placeholders = implode(', ', array_fill(0, count($values), '?'));
         $this->addBinding($values, 'where');
 
@@ -175,6 +197,10 @@ abstract class Grammar
     {
         $column = $where['column'];
         $values = $where['values'];
+
+        if (empty($values)) {
+            return '1 = 1';
+        }
 
         $placeholders = implode(', ', array_fill(0, count($values), '?'));
         $this->addBinding($values, 'where');
@@ -328,6 +354,9 @@ abstract class Grammar
     {
         $sql = [];
         foreach ($unions as $union) {
+            foreach ($union['bindings'] ?? [] as $binding) {
+                $this->addBinding($binding, 'union');
+            }
             $sql[] = ($union['all'] ? 'UNION ALL ' : 'UNION ') . $union['sql'];
         }
         return implode(' ', $sql);

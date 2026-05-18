@@ -47,6 +47,11 @@ describe('Builder', function () {
             expect($sql['wheres'][0]['boolean'])->toBe('AND');
             expect($sql['wheres'][1]['boolean'])->toBe('OR');
         });
+
+        it('compiles or where with OR connector', function () {
+            $sql = Knob::table('users')->where('status', 'active')->orWhere('status', 'pending')->toSql();
+            expect($sql['sql'])->toContain('status = ? OR status = ?');
+        });
     });
 
     describe('whereGroup', function () {
@@ -139,6 +144,12 @@ describe('Builder', function () {
             expect($sql['joins'][0]['type'])->toBe('LEFT JOIN');
             expect($sql['joins'][0]['table'])->toBe('posts');
         });
+
+        it('generates cross join without on clause', function () {
+            $sql = Knob::table('users')->crossJoin('posts')->toSql();
+            expect($sql['sql'])->toContain('CROSS JOIN "posts"');
+            expect($sql['sql'])->not->toContain(' ON ');
+        });
     });
 
     describe('orderBy', function () {
@@ -195,6 +206,53 @@ describe('Builder', function () {
         it('plucks values', function () {
             $names = Knob::table('users')->pluck('name')->toArray();
             expect($names)->toBe(['John', 'Jane']);
+        });
+    });
+
+    describe('sub queries and bindings', function () {
+        it('passes bindings through fromSub', function () {
+            $sql = Knob::table('users')
+                ->fromSub(fn ($q) => $q->from('users')->where('status', 'active'), 'u')
+                ->where('age', '>', 20)
+                ->toSql();
+
+            expect($sql['bindings'])->toBe(['active', 20]);
+        });
+
+        it('passes bindings through joinSub', function () {
+            $sql = Knob::table('users')
+                ->joinSub(
+                    fn ($q) => $q->from('users')->where('status', 'active'),
+                    'u2',
+                    'users.id',
+                    '=',
+                    'u2.id'
+                )
+                ->where('users.age', '>', 20)
+                ->toSql();
+
+            expect($sql['bindings'])->toBe(['active', 20]);
+        });
+
+        it('passes bindings through union', function () {
+            $sql = Knob::table('users')
+                ->where('status', 'active')
+                ->union(fn ($q) => $q->from('users')->where('status', 'pending'))
+                ->toSql();
+
+            expect($sql['bindings'])->toBe(['active', 'pending']);
+        });
+    });
+
+    describe('whereIn edge cases', function () {
+        it('compiles empty whereIn as always false', function () {
+            $sql = Knob::table('users')->whereIn('id', [])->toSql();
+            expect($sql['sql'])->toContain('0 = 1');
+        });
+
+        it('compiles empty whereNotIn as always true', function () {
+            $sql = Knob::table('users')->whereNotIn('id', [])->toSql();
+            expect($sql['sql'])->toContain('1 = 1');
         });
     });
 });
