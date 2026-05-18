@@ -25,6 +25,11 @@ class Knob
         return Builder::table(self::$connection, $table, $alias);
     }
 
+    public static function query(): Builder
+    {
+        return new Builder(self::$connection);
+    }
+
     public static function getDriver(): Driver
     {
         return match (self::$connection->getAttribute(PDO::ATTR_DRIVER_NAME)) {

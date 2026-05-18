@@ -49,14 +49,28 @@ class Builder
         return $this;
     }
 
-    public function selectSub(string $column, ?string $alias = null): Builder
+    public function selectSub(string|Closure|Builder $column, ?string $alias = null): Builder
     {
+        if (! is_string($column)) {
+            $subQuery = $this->normalizeSubquery($column);
+            $this->columns[] = [
+                'column' => "({$subQuery['sql']})",
+                'alias' => $alias,
+                'bindings' => $subQuery['bindings'],
+            ];
+            return $this;
+        }
+
         $this->columns[] = ['column' => "({$column})", 'alias' => $alias];
         return $this;
     }
 
     public function selectRaw(string $expression): Builder
     {
+        if ($this->columns === ['*']) {
+            $this->columns = [];
+        }
+
         $this->columns[] = $expression;
         return $this;
     }
@@ -98,11 +112,9 @@ class Builder
         return $this;
     }
 
-    public function joinSub(Closure $callback, string $as, string $first, string $operator, string $second): Builder
+    public function joinSub(Closure|Builder $callback, string $as, string $first, string $operator, string $second): Builder
     {
-        $subBuilder = new self($this->connection);
-        $callback($subBuilder);
-        $subQuery = $subBuilder->toSqlParts();
+        $subQuery = $this->normalizeSubquery($callback);
         $sql = $subQuery['sql'];
 
         $this->joins[] = [
@@ -114,11 +126,9 @@ class Builder
         return $this;
     }
 
-    public function fromSub(Closure $callback, string $as): Builder
+    public function fromSub(Closure|Builder $callback, string $as): Builder
     {
-        $subBuilder = new self($this->connection);
-        $callback($subBuilder);
-        $subQuery = $subBuilder->toSqlParts();
+        $subQuery = $this->normalizeSubquery($callback);
         $sql = $subQuery['sql'];
 
         $this->table = "({$sql})";
@@ -187,8 +197,18 @@ class Builder
         return $this;
     }
 
-    public function whereIn(string $column, array $values): Builder
+    public function whereIn(string $column, array|Closure|Builder $values): Builder
     {
+        if (! is_array($values)) {
+            $this->wheres[] = [
+                'type' => 'inSub',
+                'column' => $column,
+                'query' => $this->normalizeSubquery($values),
+                'boolean' => 'AND',
+            ];
+            return $this;
+        }
+
         $this->wheres[] = [
             'type' => 'in',
             'column' => $column,
@@ -198,8 +218,18 @@ class Builder
         return $this;
     }
 
-    public function orWhereIn(string $column, array $values): Builder
+    public function orWhereIn(string $column, array|Closure|Builder $values): Builder
     {
+        if (! is_array($values)) {
+            $this->wheres[] = [
+                'type' => 'inSub',
+                'column' => $column,
+                'query' => $this->normalizeSubquery($values),
+                'boolean' => 'OR',
+            ];
+            return $this;
+        }
+
         $this->wheres[] = [
             'type' => 'in',
             'column' => $column,
@@ -209,8 +239,18 @@ class Builder
         return $this;
     }
 
-    public function whereNotIn(string $column, array $values): Builder
+    public function whereNotIn(string $column, array|Closure|Builder $values): Builder
     {
+        if (! is_array($values)) {
+            $this->wheres[] = [
+                'type' => 'notInSub',
+                'column' => $column,
+                'query' => $this->normalizeSubquery($values),
+                'boolean' => 'AND',
+            ];
+            return $this;
+        }
+
         $this->wheres[] = [
             'type' => 'notIn',
             'column' => $column,
@@ -306,43 +346,34 @@ class Builder
         return $this;
     }
 
-    public function whereSub(string $column, string $operator, Closure $callback): Builder
+    public function whereSub(string $column, string $operator, Closure|Builder $callback): Builder
     {
-        $subBuilder = new self($this->connection);
-        $callback($subBuilder);
-
         $this->wheres[] = [
             'type' => 'sub',
             'column' => $column,
             'operator' => $operator,
-            'query' => $subBuilder->toSqlParts(),
+            'query' => $this->normalizeSubquery($callback),
             'boolean' => 'AND',
         ];
         return $this;
     }
 
-    public function whereExists(Closure $callback): Builder
+    public function whereExists(Closure|Builder $callback): Builder
     {
-        $subBuilder = new self($this->connection);
-        $callback($subBuilder);
-
         $this->wheres[] = [
             'type' => 'exists',
-            'query' => $subBuilder->toSqlParts(),
+            'query' => $this->normalizeSubquery($callback),
             'boolean' => 'AND',
             'not' => false,
         ];
         return $this;
     }
 
-    public function whereNotExists(Closure $callback): Builder
+    public function whereNotExists(Closure|Builder $callback): Builder
     {
-        $subBuilder = new self($this->connection);
-        $callback($subBuilder);
-
         $this->wheres[] = [
             'type' => 'exists',
-            'query' => $subBuilder->toSqlParts(),
+            'query' => $this->normalizeSubquery($callback),
             'boolean' => 'AND',
             'not' => true,
         ];
@@ -417,11 +448,9 @@ class Builder
         return $this;
     }
 
-    public function union(Closure $callback, bool $all = false): Builder
+    public function union(Closure|Builder $callback, bool $all = false): Builder
     {
-        $subBuilder = new self($this->connection);
-        $callback($subBuilder);
-        $subQuery = $subBuilder->toSqlParts();
+        $subQuery = $this->normalizeSubquery($callback);
 
         $this->unions[] = [
             'all' => $all,
@@ -648,6 +677,8 @@ class Builder
     public function toSqlParts(): array
     {
         $components = $this->getComponents();
+        $this->grammar->resetBindings();
+
         return [
             ...$components,
             'sql' => $this->grammar->compileSelect($components),
@@ -691,6 +722,25 @@ class Builder
         }
 
         return $quoted;
+    }
+
+    private function normalizeSubquery(Closure|Builder|string $query): array
+    {
+        if (is_string($query)) {
+            return [
+                'sql' => $query,
+                'bindings' => [],
+            ];
+        }
+
+        if ($query instanceof Closure) {
+            $subBuilder = new self($this->connection);
+            $query($subBuilder);
+
+            return $subBuilder->toSqlParts();
+        }
+
+        return $query->clone()->toSqlParts();
     }
 
     public function clone(): self

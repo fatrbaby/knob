@@ -19,6 +19,12 @@ Knob is a database query builder library ported from Laravel. It provides a flue
 ./vendor/bin/pest tests/Unit/ExampleTest.php
 ```
 
+## OpenSpec
+
+- OpenSpec workflow doc: `openspec/README.md`
+- Baseline behavior specs: `openspec/specs/`
+- Proposed changes: `openspec/changes/`
+
 ## Architecture
 
 - **Knob** (`src/Knob.php`): Static facade entry point. Use `Knob::using($pdo)` to set the connection and `Knob::table($name)` to create a query builder.

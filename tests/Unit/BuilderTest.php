@@ -223,6 +223,37 @@ describe('Builder', function () {
     });
 
     describe('sub queries and bindings', function () {
+        it('supports selectSub with closure-defined subquery', function () {
+            $sql = Knob::table('users')
+                ->select('name')
+                ->selectSub(
+                    fn ($q) => $q->from('posts')->selectRaw('COUNT(*)')->where('published', true)->whereRaw('posts.user_id = users.id'),
+                    'published_posts'
+                )
+                ->where('status', 'active')
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('(SELECT COUNT(*) FROM "posts" WHERE published = ? AND posts.user_id = users.id) AS "published_posts"');
+            expect($sql['bindings'])->toBe([true, 'active']);
+        });
+
+        it('supports selectSub with reusable builder subquery', function () {
+            $subquery = Knob::query()
+                ->from('posts')
+                ->selectRaw('COUNT(*)')
+                ->where('published', true)
+                ->whereRaw('posts.user_id = users.id');
+
+            $sql = Knob::table('users')
+                ->select('name')
+                ->selectSub($subquery, 'published_posts')
+                ->where('status', 'active')
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('(SELECT COUNT(*) FROM "posts" WHERE published = ? AND posts.user_id = users.id) AS "published_posts"');
+            expect($sql['bindings'])->toBe([true, 'active']);
+        });
+
         it('passes bindings through fromSub', function () {
             $sql = Knob::table('users')
                 ->fromSub(fn ($q) => $q->from('users')->where('status', 'active'), 'u')
@@ -247,6 +278,57 @@ describe('Builder', function () {
             expect($sql['bindings'])->toBe(['active', 20]);
         });
 
+        it('supports whereIn with subquery input', function () {
+            $sql = Knob::table('posts')
+                ->whereIn('user_id', fn ($q) => $q->select('id')->from('users')->where('status', 'active'))
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('user_id IN (SELECT "id" FROM "users" WHERE status = ?)');
+            expect($sql['bindings'])->toBe(['active']);
+        });
+
+        it('supports whereNotIn with reusable builder input', function () {
+            $subquery = Knob::query()
+                ->select('id')
+                ->from('users')
+                ->where('status', 'inactive');
+
+            $sql = Knob::table('posts')
+                ->whereNotIn('user_id', $subquery)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('user_id NOT IN (SELECT "id" FROM "users" WHERE status = ?)');
+            expect($sql['bindings'])->toBe(['inactive']);
+        });
+
+        it('supports whereSub with reusable builder input', function () {
+            $subquery = Knob::query()
+                ->selectRaw('MAX(score)')
+                ->from('scores')
+                ->where('scores.user_id', 10);
+
+            $sql = Knob::table('users')
+                ->whereSub('score', '>=', $subquery)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('score >= (SELECT MAX(score) FROM "scores" WHERE scores.user_id = ?)');
+            expect($sql['bindings'])->toBe([10]);
+        });
+
+        it('supports whereExists with reusable builder input', function () {
+            $subquery = Knob::query()
+                ->from('posts')
+                ->whereRaw('posts.user_id = users.id')
+                ->where('published', true);
+
+            $sql = Knob::table('users')
+                ->whereExists($subquery)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('EXISTS (SELECT * FROM "posts" WHERE posts.user_id = users.id AND published = ?)');
+            expect($sql['bindings'])->toBe([true]);
+        });
+
         it('passes bindings through union', function () {
             $sql = Knob::table('users')
                 ->where('status', 'active')
@@ -254,6 +336,36 @@ describe('Builder', function () {
                 ->toSqlParts();
 
             expect($sql['bindings'])->toBe(['active', 'pending']);
+        });
+
+        it('preserves binding order across select from join and where subqueries', function () {
+            $sql = Knob::table('users')
+                ->selectSub(
+                    fn ($q) => $q->from('posts')->selectRaw('COUNT(*)')->where('published', true)->whereRaw('posts.user_id = users.id'),
+                    'post_count'
+                )
+                ->fromSub(fn ($q) => $q->from('users')->where('status', 'active'), 'u')
+                ->joinSub(
+                    fn ($q) => $q->from('profiles')->where('verified', true),
+                    'p',
+                    'u.id',
+                    '=',
+                    'p.user_id'
+                )
+                ->whereExists(fn ($q) => $q->from('orders')->whereRaw('orders.user_id = u.id')->where('state', 'paid'))
+                ->toSqlParts();
+
+            expect($sql['bindings'])->toBe([true, 'active', true, 'paid']);
+        });
+
+        it('does not accumulate bindings across repeated builder snapshots', function () {
+            $subquery = Knob::query()
+                ->select('id')
+                ->from('users')
+                ->where('status', 'active');
+
+            expect($subquery->toSqlParts()['bindings'])->toBe(['active']);
+            expect($subquery->toSqlParts()['bindings'])->toBe(['active']);
         });
     });
 

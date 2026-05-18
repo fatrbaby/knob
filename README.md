@@ -53,7 +53,14 @@ Knob::table('users')->where('id', 1)->delete();
 $count = Knob::table('users')->count();
 ```
 
+## OpenSpec
+
+This project uses OpenSpec for spec-driven changes.
+
+- Workflow entry: `openspec/README.md`
+- Baseline specs: `openspec/specs/`
+- Active proposals: `openspec/changes/`
+
 ## License
 
 Apache-2.0
-

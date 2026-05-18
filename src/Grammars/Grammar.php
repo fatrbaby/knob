@@ -72,6 +72,9 @@ abstract class Grammar
     {
         return implode(', ', array_map(function ($column) {
             if (is_array($column)) {
+                foreach ($column['bindings'] ?? [] as $binding) {
+                    $this->addBinding($binding, 'select');
+                }
                 return $column['column'] . ' AS ' . $this->quoteIdentifier($column['alias']);
             }
             if ($column === '*') {
@@ -153,7 +156,9 @@ abstract class Grammar
         return match ($type) {
             'basic' => $this->compileWhereBasic($where),
             'in' => $this->compileWhereIn($where),
+            'inSub' => $this->compileWhereInSub($where),
             'notIn' => $this->compileWhereNotIn($where),
+            'notInSub' => $this->compileWhereNotInSub($where),
             'between' => $this->compileWhereBetween($where),
             'null' => $this->compileWhereNull($where),
             'notNull' => $this->compileWhereNotNull($where),
@@ -208,6 +213,16 @@ abstract class Grammar
         return "{$column} NOT IN ({$placeholders})";
     }
 
+    protected function compileWhereInSub(array $where): string
+    {
+        return $this->compileWhereSubqueryList($where, false);
+    }
+
+    protected function compileWhereNotInSub(array $where): string
+    {
+        return $this->compileWhereSubqueryList($where, true);
+    }
+
     protected function compileWhereBetween(array $where): string
     {
         $column = $where['column'];
@@ -240,14 +255,9 @@ abstract class Grammar
         $column = $where['column'];
         $operator = $where['operator'];
         $query = $where['query'];
-        $boolean = $where['boolean'] ?? 'AND';
 
         $sql = "{$column} {$operator} ({$query['sql']})";
-        foreach ($query['bindings'] as $type => $values) {
-            foreach ($values as $value) {
-                $this->addBinding($value, 'where');
-            }
-        }
+        $this->addSubqueryBindings($query['bindings'], 'where');
 
         return $sql;
     }
@@ -259,11 +269,7 @@ abstract class Grammar
 
         $op = $not ? 'NOT EXISTS' : 'EXISTS';
         $sql = "{$op} ({$query['sql']})";
-        foreach ($query['bindings'] as $type => $values) {
-            foreach ($values as $value) {
-                $this->addBinding($value, 'where');
-            }
-        }
+        $this->addSubqueryBindings($query['bindings'], 'where');
 
         return $sql;
     }
@@ -298,6 +304,24 @@ abstract class Grammar
         }
 
         return $sql;
+    }
+
+    protected function compileWhereSubqueryList(array $where, bool $not): string
+    {
+        $column = $where['column'];
+        $query = $where['query'];
+        $operator = $not ? 'NOT IN' : 'IN';
+
+        $this->addSubqueryBindings($query['bindings'], 'where');
+
+        return "{$column} {$operator} ({$query['sql']})";
+    }
+
+    protected function addSubqueryBindings(array $bindings, string $type): void
+    {
+        foreach ($bindings as $value) {
+            $this->addBinding($value, $type);
+        }
     }
 
     protected function compileGroups(array $groups): string
