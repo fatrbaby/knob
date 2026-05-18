@@ -102,7 +102,7 @@ class Builder
     {
         $subBuilder = new self($this->connection);
         $callback($subBuilder);
-        $subQuery = $subBuilder->toSql();
+        $subQuery = $subBuilder->toSqlParts();
         $sql = $subQuery['sql'];
 
         $this->joins[] = [
@@ -118,7 +118,7 @@ class Builder
     {
         $subBuilder = new self($this->connection);
         $callback($subBuilder);
-        $subQuery = $subBuilder->toSql();
+        $subQuery = $subBuilder->toSqlParts();
         $sql = $subQuery['sql'];
 
         $this->table = "({$sql})";
@@ -315,7 +315,7 @@ class Builder
             'type' => 'sub',
             'column' => $column,
             'operator' => $operator,
-            'query' => $subBuilder->toSql(),
+            'query' => $subBuilder->toSqlParts(),
             'boolean' => 'AND',
         ];
         return $this;
@@ -328,7 +328,7 @@ class Builder
 
         $this->wheres[] = [
             'type' => 'exists',
-            'query' => $subBuilder->toSql(),
+            'query' => $subBuilder->toSqlParts(),
             'boolean' => 'AND',
             'not' => false,
         ];
@@ -342,7 +342,7 @@ class Builder
 
         $this->wheres[] = [
             'type' => 'exists',
-            'query' => $subBuilder->toSql(),
+            'query' => $subBuilder->toSqlParts(),
             'boolean' => 'AND',
             'not' => true,
         ];
@@ -421,7 +421,7 @@ class Builder
     {
         $subBuilder = new self($this->connection);
         $callback($subBuilder);
-        $subQuery = $subBuilder->toSql();
+        $subQuery = $subBuilder->toSqlParts();
 
         $this->unions[] = [
             'all' => $all,
@@ -645,7 +645,7 @@ class Builder
         ];
     }
 
-    public function toSql(): array
+    public function toSqlParts(): array
     {
         $components = $this->getComponents();
         return [
@@ -653,6 +653,44 @@ class Builder
             'sql' => $this->grammar->compileSelect($components),
             'bindings' => $this->grammar->getBindings(),
         ];
+    }
+
+    public function toSql(): string
+    {
+        $query = $this->toSqlParts();
+        return $this->interpolateBindings($query['sql'], $query['bindings']);
+    }
+
+    private function interpolateBindings(string $sql, array $bindings): string
+    {
+        foreach ($bindings as $binding) {
+            $value = $this->formatBindingValue($binding);
+            $sql = preg_replace('/\?/', $value, $sql, 1) ?? $sql;
+        }
+
+        return $sql;
+    }
+
+    private function formatBindingValue(mixed $value): string
+    {
+        if ($value === null) {
+            return 'NULL';
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        $quoted = $this->connection->quote((string) $value);
+        if ($quoted === false) {
+            return "'" . str_replace("'", "''", (string) $value) . "'";
+        }
+
+        return $quoted;
     }
 
     public function clone(): self

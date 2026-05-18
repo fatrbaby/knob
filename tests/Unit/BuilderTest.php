@@ -15,19 +15,19 @@ describe('Builder', function () {
 
     describe('select', function () {
         it('generates select all', function () {
-            $sql = Knob::table('users')->toSql();
+            $sql = Knob::table('users')->toSqlParts();
             expect($sql['columns'])->toBe(['*']);
         });
 
         it('generates select with columns', function () {
-            $sql = Knob::table('users')->select('name', 'email')->toSql();
+            $sql = Knob::table('users')->select('name', 'email')->toSqlParts();
             expect($sql['columns'])->toBe(['name', 'email']);
         });
     });
 
     describe('where', function () {
         it('generates basic where clause', function () {
-            $sql = Knob::table('users')->where('status', 'active')->toSql();
+            $sql = Knob::table('users')->where('status', 'active')->toSqlParts();
             expect($sql['wheres'])->toHaveCount(1);
             expect($sql['wheres'][0]['type'])->toBe('basic');
             expect($sql['wheres'][0]['column'])->toBe('status');
@@ -36,33 +36,33 @@ describe('Builder', function () {
         });
 
         it('generates where with operator', function () {
-            $sql = Knob::table('users')->where('age', '>', 18)->toSql();
+            $sql = Knob::table('users')->where('age', '>', 18)->toSqlParts();
             expect($sql['wheres'][0]['operator'])->toBe('>');
             expect($sql['wheres'][0]['value'])->toBe(18);
         });
 
         it('generates or where', function () {
-            $sql = Knob::table('users')->where('status', 'active')->orWhere('status', 'pending')->toSql();
+            $sql = Knob::table('users')->where('status', 'active')->orWhere('status', 'pending')->toSqlParts();
             expect($sql['wheres'])->toHaveCount(2);
             expect($sql['wheres'][0]['boolean'])->toBe('AND');
             expect($sql['wheres'][1]['boolean'])->toBe('OR');
         });
 
         it('compiles or where with OR connector', function () {
-            $sql = Knob::table('users')->where('status', 'active')->orWhere('status', 'pending')->toSql();
+            $sql = Knob::table('users')->where('status', 'active')->orWhere('status', 'pending')->toSqlParts();
             expect($sql['sql'])->toContain('status = ? OR status = ?');
         });
     });
 
     describe('whereGroup', function () {
         it('generates basic nested AND group', function () {
-            $sql = Knob::table('users')->where('status', 'active')->where(fn ($q) => $q->where('type', 'A')->orWhere('type', 'B'))->toSql();
+            $sql = Knob::table('users')->where('status', 'active')->where(fn ($q) => $q->where('type', 'A')->orWhere('type', 'B'))->toSqlParts();
             expect($sql['sql'])->toContain('status = ?');
             expect($sql['sql'])->toContain('(type = ? OR type = ?)');
         });
 
         it('generates nested group with AND conditions inside', function () {
-            $sql = Knob::table('users')->where(fn ($q) => $q->where('a', 1)->where('b', 2))->toSql();
+            $sql = Knob::table('users')->where(fn ($q) => $q->where('a', 1)->where('b', 2))->toSqlParts();
             expect($sql['sql'])->toContain('(a = ? AND b = ?)');
         });
 
@@ -70,7 +70,7 @@ describe('Builder', function () {
             $sql = Knob::table('users')
                 ->where(fn ($q) => $q->where('a', 1)->orWhere('b', 2))
                 ->where(fn ($q) => $q->where('c', 3)->orWhere('d', 4))
-                ->toSql();
+                ->toSqlParts();
             expect($sql['sql'])->toContain('(a = ? OR b = ?)');
             expect($sql['sql'])->toContain('(c = ? OR d = ?)');
         });
@@ -79,7 +79,7 @@ describe('Builder', function () {
             $sql = Knob::table('users')
                 ->where('x', 1)
                 ->where(fn ($q) => $q->where(fn ($r) => $r->where('a', 'A')->orWhere('b', 'B'))->where('y', 2))
-                ->toSql();
+                ->toSqlParts();
             expect($sql['sql'])->toContain('x = ?');
             expect($sql['sql'])->toContain('((a = ? OR b = ?) AND y = ?)');
         });
@@ -89,41 +89,41 @@ describe('Builder', function () {
                 ->where('a', 1)
                 ->where(fn ($q) => $q->where('b', 2)->orWhere('c', 3))
                 ->where('d', 4)
-                ->toSql();
+                ->toSqlParts();
             expect($sql['bindings'])->toBe([1, 2, 3, 4]);
         });
 
         it('handles whereIn inside group', function () {
-            $sql = Knob::table('users')->where(fn ($q) => $q->whereIn('id', [1, 2, 3]))->toSql();
+            $sql = Knob::table('users')->where(fn ($q) => $q->whereIn('id', [1, 2, 3]))->toSqlParts();
             expect($sql['sql'])->toContain('(id IN (?, ?, ?))');
             expect($sql['bindings'])->toBe([1, 2, 3]);
         });
 
         it('handles whereBetween inside group', function () {
-            $sql = Knob::table('users')->where(fn ($q) => $q->whereBetween('age', [18, 30]))->toSql();
+            $sql = Knob::table('users')->where(fn ($q) => $q->whereBetween('age', [18, 30]))->toSqlParts();
             expect($sql['sql'])->toContain('(age BETWEEN ? AND ?)');
             expect($sql['bindings'])->toBe([18, 30]);
         });
 
         it('handles whereNull / whereNotNull inside group', function () {
-            $sql = Knob::table('users')->where(fn ($q) => $q->whereNull('deleted_at')->orWhereNotNull('active'))->toSql();
+            $sql = Knob::table('users')->where(fn ($q) => $q->whereNull('deleted_at')->orWhereNotNull('active'))->toSqlParts();
             expect($sql['sql'])->toContain('(deleted_at IS NULL OR active IS NOT NULL)');
         });
 
         it('handles whereExists inside group', function () {
-            $sql = Knob::table('users')->where(fn ($q) => $q->whereExists(fn ($sub) => $sub->from('posts', 'p')->whereRaw('p.user_id = users.id')))->toSql();
+            $sql = Knob::table('users')->where(fn ($q) => $q->whereExists(fn ($sub) => $sub->from('posts', 'p')->whereRaw('p.user_id = users.id')))->toSqlParts();
             expect($sql['sql'])->toContain('(EXISTS');
         });
 
         it('handles group at top level with no outer conditions', function () {
-            $sql = Knob::table('users')->where(fn ($q) => $q->where('a', 1)->orWhere('b', 2))->toSql();
+            $sql = Knob::table('users')->where(fn ($q) => $q->where('a', 1)->orWhere('b', 2))->toSqlParts();
             expect($sql['sql'])->toContain('(a = ? OR b = ?)');
         });
     });
 
     describe('whereIn', function () {
         it('generates whereIn clause', function () {
-            $sql = Knob::table('users')->whereIn('id', [1, 2, 3])->toSql();
+            $sql = Knob::table('users')->whereIn('id', [1, 2, 3])->toSqlParts();
             expect($sql['wheres'][0]['type'])->toBe('in');
             expect($sql['wheres'][0]['values'])->toBe([1, 2, 3]);
         });
@@ -131,7 +131,7 @@ describe('Builder', function () {
 
     describe('whereNull', function () {
         it('generates whereNull clause', function () {
-            $sql = Knob::table('users')->whereNull('email')->toSql();
+            $sql = Knob::table('users')->whereNull('email')->toSqlParts();
             expect($sql['wheres'][0]['type'])->toBe('null');
             expect($sql['wheres'][0]['column'])->toBe('email');
         });
@@ -139,14 +139,14 @@ describe('Builder', function () {
 
     describe('joins', function () {
         it('generates left join', function () {
-            $sql = Knob::table('users')->leftJoin('posts', 'users.id', '=', 'posts.user_id')->toSql();
+            $sql = Knob::table('users')->leftJoin('posts', 'users.id', '=', 'posts.user_id')->toSqlParts();
             expect($sql['joins'])->toHaveCount(1);
             expect($sql['joins'][0]['type'])->toBe('LEFT JOIN');
             expect($sql['joins'][0]['table'])->toBe('posts');
         });
 
         it('generates cross join without on clause', function () {
-            $sql = Knob::table('users')->crossJoin('posts')->toSql();
+            $sql = Knob::table('users')->crossJoin('posts')->toSqlParts();
             expect($sql['sql'])->toContain('CROSS JOIN "posts"');
             expect($sql['sql'])->not->toContain(' ON ');
         });
@@ -154,21 +154,21 @@ describe('Builder', function () {
 
     describe('orderBy', function () {
         it('generates order by', function () {
-            $sql = Knob::table('users')->orderBy('name', 'ASC')->toSql();
+            $sql = Knob::table('users')->orderBy('name', 'ASC')->toSqlParts();
             expect($sql['orders'])->toHaveCount(1);
             expect($sql['orders'][0]['column'])->toBe('name');
             expect($sql['orders'][0]['direction'])->toBe('ASC');
         });
 
         it('generates order by desc', function () {
-            $sql = Knob::table('users')->orderByDesc('created_at')->toSql();
+            $sql = Knob::table('users')->orderByDesc('created_at')->toSqlParts();
             expect($sql['orders'][0]['direction'])->toBe('DESC');
         });
     });
 
     describe('limit and offset', function () {
         it('generates limit and offset', function () {
-            $sql = Knob::table('users')->limit(10)->offset(20)->toSql();
+            $sql = Knob::table('users')->limit(10)->offset(20)->toSqlParts();
             expect($sql['limit'])->toBe(10);
             expect($sql['offset'])->toBe(20);
         });
@@ -176,7 +176,7 @@ describe('Builder', function () {
 
     describe('groupBy', function () {
         it('generates group by', function () {
-            $sql = Knob::table('posts')->groupBy('user_id')->toSql();
+            $sql = Knob::table('posts')->groupBy('user_id')->toSqlParts();
             expect($sql['groups'])->toBe(['user_id']);
         });
     });
@@ -209,12 +209,25 @@ describe('Builder', function () {
         });
     });
 
+    describe('toSql', function () {
+        it('returns interpolated sql string', function () {
+            $sql = Knob::table('users')
+                ->where('status', 'active')
+                ->where('age', '>', 18)
+                ->toSql();
+
+            expect($sql)->toContain("status = 'active'");
+            expect($sql)->toContain('age > 18');
+            expect($sql)->not->toContain('?');
+        });
+    });
+
     describe('sub queries and bindings', function () {
         it('passes bindings through fromSub', function () {
             $sql = Knob::table('users')
                 ->fromSub(fn ($q) => $q->from('users')->where('status', 'active'), 'u')
                 ->where('age', '>', 20)
-                ->toSql();
+                ->toSqlParts();
 
             expect($sql['bindings'])->toBe(['active', 20]);
         });
@@ -229,7 +242,7 @@ describe('Builder', function () {
                     'u2.id'
                 )
                 ->where('users.age', '>', 20)
-                ->toSql();
+                ->toSqlParts();
 
             expect($sql['bindings'])->toBe(['active', 20]);
         });
@@ -238,7 +251,7 @@ describe('Builder', function () {
             $sql = Knob::table('users')
                 ->where('status', 'active')
                 ->union(fn ($q) => $q->from('users')->where('status', 'pending'))
-                ->toSql();
+                ->toSqlParts();
 
             expect($sql['bindings'])->toBe(['active', 'pending']);
         });
@@ -246,12 +259,12 @@ describe('Builder', function () {
 
     describe('whereIn edge cases', function () {
         it('compiles empty whereIn as always false', function () {
-            $sql = Knob::table('users')->whereIn('id', [])->toSql();
+            $sql = Knob::table('users')->whereIn('id', [])->toSqlParts();
             expect($sql['sql'])->toContain('0 = 1');
         });
 
         it('compiles empty whereNotIn as always true', function () {
-            $sql = Knob::table('users')->whereNotIn('id', [])->toSql();
+            $sql = Knob::table('users')->whereNotIn('id', [])->toSqlParts();
             expect($sql['sql'])->toContain('1 = 1');
         });
     });
