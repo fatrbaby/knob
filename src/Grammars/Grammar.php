@@ -109,7 +109,7 @@ abstract class Grammar
             $type = $join['type'];
             $table = $join['table'];
             $clauses = $join['clauses'];
-            $tableSql = str_starts_with($table, '(') ? $table : $this->quoteIdentifier($table);
+            $tableSql = $this->compileJoinTable($join);
             foreach ($join['bindings'] ?? [] as $binding) {
                 $this->addBinding($binding, 'join');
             }
@@ -122,6 +122,19 @@ abstract class Grammar
             $sql[] = "{$type} {$tableSql} ON " . $this->compileJoinClauses($clauses);
         }
         return implode(' ', $sql);
+    }
+
+    protected function compileJoinTable(array $join): string
+    {
+        $table = $join['table'];
+        $alias = $join['alias'] ?? null;
+        $tableSql = str_starts_with($table, '(') ? $table : $this->quoteIdentifier($table);
+
+        if ($alias) {
+            return $tableSql . ' AS ' . $this->quoteIdentifier($alias);
+        }
+
+        return $tableSql;
     }
 
     protected function compileJoinClauses(array $clauses): string

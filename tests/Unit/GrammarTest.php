@@ -51,6 +51,25 @@ describe('Grammar compilation', function () {
         'sqlserver' => [new SqlServerGrammar(), 'SELECT 1 FROM [users]'],
     ]);
 
+    it('compiles join table aliases for each supported database', function (Grammar $grammar, string $expectedSql) {
+        $sql = $grammar->compileSelect(selectComponents([
+            'from' => ['users', 'u', []],
+            'joins' => [[
+                'type' => 'INNER JOIN',
+                'table' => 'posts',
+                'alias' => 'p',
+                'clauses' => [['u.id', '=', 'p.user_id']],
+            ]],
+        ]));
+
+        expect($sql)->toBe($expectedSql);
+    })->with([
+        'mysql' => [new MySqlGrammar(), 'SELECT `id`, `name` FROM `users` AS `u` INNER JOIN `posts` AS `p` ON u.id = p.user_id'],
+        'postgres' => [new PostgresGrammar(), 'SELECT "id", "name" FROM "users" AS "u" INNER JOIN "posts" AS "p" ON u.id = p.user_id'],
+        'sqlite' => [new SqliteGrammar(), 'SELECT "id", "name" FROM "users" AS "u" INNER JOIN "posts" AS "p" ON u.id = p.user_id'],
+        'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] AS [u] INNER JOIN [posts] AS [p] ON u.id = p.user_id'],
+    ]);
+
     it('compiles limit and offset for each supported database', function (Grammar $grammar, string $expectedSql) {
         $sql = $grammar->compileSelect(selectComponents([
             'orders' => [['column' => 'id', 'direction' => 'ASC']],

@@ -176,6 +176,15 @@ describe('Builder', function () {
             expect($sql['joins'][0]['type'])->toBe('INNER JOIN');
         });
 
+        it('generates inner join with table alias', function () {
+            $sql = Knob::table('users', 'u')
+                ->join('posts', 'u.id', '=', 'p.user_id', 'p')
+                ->toSqlParts();
+
+            expect($sql['joins'][0]['alias'])->toBe('p');
+            expect($sql['sql'])->toContain('FROM "users" AS "u" INNER JOIN "posts" AS "p" ON u.id = p.user_id');
+        });
+
         it('generates left join', function () {
             $sql = Knob::table('users')->leftJoin('posts', 'users.id', '=', 'posts.user_id')->toSqlParts();
             expect($sql['joins'])->toHaveCount(1);
@@ -191,6 +200,12 @@ describe('Builder', function () {
         it('generates cross join without on clause', function () {
             $sql = Knob::table('users')->crossJoin('posts')->toSqlParts();
             expect($sql['sql'])->toContain('CROSS JOIN "posts"');
+            expect($sql['sql'])->not->toContain(' ON ');
+        });
+
+        it('generates cross join with table alias', function () {
+            $sql = Knob::table('users')->crossJoin('roles', 'r')->toSqlParts();
+            expect($sql['sql'])->toContain('CROSS JOIN "roles" AS "r"');
             expect($sql['sql'])->not->toContain(' ON ');
         });
     });

@@ -82,31 +82,32 @@ class Builder
         return $this;
     }
 
-    public function join(string $table, string $first, string $operator, string $second): Builder
+    public function join(string $table, string $first, string $operator, string $second, ?string $alias = null): Builder
     {
-        return $this->joinInternal($table, $first, $operator, $second, 'INNER JOIN');
+        return $this->joinInternal($table, $first, $operator, $second, 'INNER JOIN', $alias);
     }
 
-    public function leftJoin(string $table, string $first, string $operator, string $second): Builder
+    public function leftJoin(string $table, string $first, string $operator, string $second, ?string $alias = null): Builder
     {
-        return $this->joinInternal($table, $first, $operator, $second, 'LEFT JOIN');
+        return $this->joinInternal($table, $first, $operator, $second, 'LEFT JOIN', $alias);
     }
 
-    public function rightJoin(string $table, string $first, string $operator, string $second): Builder
+    public function rightJoin(string $table, string $first, string $operator, string $second, ?string $alias = null): Builder
     {
-        return $this->joinInternal($table, $first, $operator, $second, 'RIGHT JOIN');
+        return $this->joinInternal($table, $first, $operator, $second, 'RIGHT JOIN', $alias);
     }
 
-    public function crossJoin(string $table): Builder
+    public function crossJoin(string $table, ?string $alias = null): Builder
     {
-        return $this->joinInternal($table, '', '', '', 'CROSS JOIN');
+        return $this->joinInternal($table, '', '', '', 'CROSS JOIN', $alias);
     }
 
-    private function joinInternal(string $table, string $first, string $operator, string $second, string $type): Builder
+    private function joinInternal(string $table, string $first, string $operator, string $second, string $type, ?string $alias = null): Builder
     {
         $this->joins[] = [
             'type' => $type,
             'table' => $table,
+            'alias' => $alias,
             'clauses' => $first ? [[$first, $operator, $second]] : [],
         ];
         return $this;
