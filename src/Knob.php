@@ -4,15 +4,19 @@ namespace Knob;
 
 use PDO;
 
-class Knob
+final class Knob
 {
     private static PDO $connection;
-    private static Driver $driver = Driver::PostgreSQL;
+    private static Driver $driver;
+
+    private function __construct()
+    {
+    }
 
     public static function using(PDO $connection): void
     {
         self::$connection = $connection;
-        self::$driver = self::getDriver();
+        self::$driver = self::detectDriver();
     }
 
     public static function getConnection(): PDO
@@ -32,12 +36,7 @@ class Knob
 
     public static function getDriver(): Driver
     {
-        return match (self::$connection->getAttribute(PDO::ATTR_DRIVER_NAME)) {
-            'pgsql' => Driver::PostgreSQL,
-            'mysql' => Driver::MySQL,
-            'sqlite' => Driver::SQLite,
-            'sqlsrv' => Driver::SQLServer,
-        };
+        return self::$driver;
     }
 
     public static function beginTransaction(): bool
@@ -66,5 +65,15 @@ class Knob
             self::rollBack();
             throw $e;
         }
+    }
+
+    private static function detectDriver(): Driver
+    {
+        return match (self::$connection->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+            'pgsql' => Driver::PostgreSQL,
+            'mysql' => Driver::MySQL,
+            'sqlite' => Driver::SQLite,
+            'sqlsrv' => Driver::SQLServer,
+        };
     }
 }

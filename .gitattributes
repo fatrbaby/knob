@@ -10,3 +10,5 @@
 /pint.json          export-ignore
 /.env.example       export-ignore
 /Makefile           export-ignore
+/openspec           export-ignore
+.claude             export-ignore
