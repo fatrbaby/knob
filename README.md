@@ -4,7 +4,7 @@ Knob is a database query builder library ported from Laravel. It provides a flue
 
 ## Requirements
 
-- PHP 8.1+
+- PHP 8.2+
 - PDO extension
 
 ## Supported Databases

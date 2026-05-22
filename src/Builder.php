@@ -460,7 +460,7 @@ class Builder
         return $this;
     }
 
-    public function unionAll(Closure $callback): Builder
+    public function unionAll(Closure|Builder $callback): Builder
     {
         return $this->union($callback, true);
     }

@@ -497,6 +497,20 @@ describe('Builder', function () {
             expect($sql['bindings'])->toBe(['active', 'pending']);
         });
 
+        it('supports unionAll with reusable builder input', function () {
+            $union = Knob::query()
+                ->from('users')
+                ->where('status', 'pending');
+
+            $sql = Knob::table('users')
+                ->where('status', 'active')
+                ->unionAll($union)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('UNION ALL SELECT * FROM "users" WHERE status = ?');
+            expect($sql['bindings'])->toBe(['active', 'pending']);
+        });
+
         it('preserves binding order across select from join and where subqueries', function () {
             $sql = Knob::table('users')
                 ->selectSub(
