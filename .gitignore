@@ -1,3 +1,14 @@
 /vendor
 composer.lock
+.php-cs-fixer.cache
+.php-cs-fixer.php
+.phpunit.result.cache
+composer.phar
+package.tar
+/packages.json
+/.phpunit
+.DS_Store
+.idea
+.vscode
+
 .env
