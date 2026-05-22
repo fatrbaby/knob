@@ -18,4 +18,15 @@ class SqlServerGrammar extends Grammar
     {
         return "OFFSET {$offset} ROWS";
     }
+
+    protected function compileLimitOffset(?int $limit, ?int $offset): string
+    {
+        $offset ??= 0;
+
+        if ($limit === null) {
+            return $this->compileOffset($offset);
+        }
+
+        return "OFFSET {$offset} ROWS FETCH NEXT {$limit} ROWS ONLY";
+    }
 }

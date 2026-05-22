@@ -61,6 +61,30 @@ This project uses OpenSpec for spec-driven changes.
 - Baseline specs: `openspec/specs/`
 - Active proposals: `openspec/changes/`
 
+## Testing
+
+Run the default test suite:
+
+```bash
+make test
+```
+
+MySQL, PostgreSQL, and SQL Server smoke tests are optional and only run when their DSN environment variables are configured:
+
+```bash
+cp .env.example .env
+```
+
+Fill in the database credentials in `.env`, then run:
+
+```bash
+make smoke-mysql
+make smoke-pgsql
+make smoke-sqlsrv
+```
+
+Use `make smoke` to run all configured database smoke tests. Empty DSNs are skipped.
+
 ## License
 
 Apache-2.0

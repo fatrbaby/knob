@@ -53,12 +53,8 @@ abstract class Grammar
             $sql[] = $this->compileOrders($components['orders']);
         }
 
-        if (! empty($components['limit'])) {
-            $sql[] = $this->compileLimit($components['limit']);
-        }
-
-        if (! empty($components['offset'])) {
-            $sql[] = $this->compileOffset($components['offset']);
+        if (($components['limit'] ?? null) !== null || ($components['offset'] ?? null) !== null) {
+            $sql[] = $this->compileLimitOffset($components['limit'] ?? null, $components['offset'] ?? null);
         }
 
         if (! empty($components['unions'])) {
@@ -79,6 +75,9 @@ abstract class Grammar
             }
             if ($column === '*') {
                 return $column;
+            }
+            if (is_int($column) || is_float($column)) {
+                return (string) $column;
             }
             if (str_contains($column, '(') || str_contains($column, ')')) {
                 return $column;
@@ -373,6 +372,14 @@ abstract class Grammar
     abstract protected function compileLimit(int $limit): string;
 
     abstract protected function compileOffset(int $offset): string;
+
+    protected function compileLimitOffset(?int $limit, ?int $offset): string
+    {
+        return implode(' ', array_filter([
+            $limit !== null ? $this->compileLimit($limit) : null,
+            $offset !== null ? $this->compileOffset($offset) : null,
+        ]));
+    }
 
     protected function compileUnions(array $unions): string
     {
