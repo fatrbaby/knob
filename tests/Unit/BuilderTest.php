@@ -571,6 +571,17 @@ describe('Builder', function () {
             expect($sql['bindings'])->toBe(['active', 18]);
         });
 
+        it('executes whereRaw after SQL introspection without duplicate bindings', function () {
+            $query = Knob::table('users')
+                ->select(['id', 'name'])
+                ->whereRaw('id > ? AND id < ?', ['0', '2']);
+
+            expect($query->toSqlParts()['bindings'])->toBe(['0', '2']);
+            expect($query->get()->toArray())->toBe([
+                ['id' => 1, 'name' => 'John'],
+            ]);
+        });
+
         it('supports whereNotExists clauses', function () {
             $sql = Knob::table('users')
                 ->whereNotExists(fn ($q) => $q->from('posts')->whereRaw('posts.user_id = users.id'))

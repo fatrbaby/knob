@@ -682,11 +682,14 @@ class Builder
     {
         $components = $this->getComponents();
         $this->grammar->resetBindings();
+        $sql = $this->grammar->compileSelect($components);
+        $bindings = $this->grammar->getBindings();
+        $this->grammar->resetBindings();
 
         return [
             ...$components,
-            'sql' => $this->grammar->compileSelect($components),
-            'bindings' => $this->grammar->getBindings(),
+            'sql' => $sql,
+            'bindings' => $bindings,
         ];
     }
 
