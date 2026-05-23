@@ -106,9 +106,7 @@ abstract class Grammar
     {
         $sql = [];
         foreach ($joins as $join) {
-            $type = $join['type'];
-            $table = $join['table'];
-            $clauses = $join['clauses'];
+            ['type' => $type, 'table' => $table, 'clauses' => $clauses] = $join;
             $tableSql = $this->compileJoinTable($join);
             foreach ($join['bindings'] ?? [] as $binding) {
                 $this->addBinding($binding, 'join');
@@ -184,10 +182,7 @@ abstract class Grammar
 
     protected function compileWhereBasic(array $where): string
     {
-        $column = $where['column'];
-        $operator = $where['operator'];
-        $value = $where['value'];
-        $boolean = $where['boolean'] ?? 'AND';
+        ['column' => $column, 'operator' => $operator, 'value' => $value] = $where;
 
         $sql = "{$column} {$operator} ?";
         $this->addBinding($value, 'where');
@@ -366,9 +361,7 @@ abstract class Grammar
 
     protected function compileHavingBasic(array $having): string
     {
-        $column = $having['column'];
-        $operator = $having['operator'];
-        $value = $having['value'];
+        ['column' => $column, 'operator' => $operator, 'value' => $value] = $having;
 
         $this->addBinding($value, 'having');
         return "{$column} {$operator} ?";
@@ -413,11 +406,23 @@ abstract class Grammar
             fn ($col) => $this->quoteIdentifier($col),
             $components['columns']
         ));
-        $placeholders = implode(', ', array_fill(0, count($components['values']), '(' . implode(', ', array_fill(0, count($components['values'][0]), '?')) . ')'));
+        $placeholders = $this->compileInsertPlaceholders($components['values']);
 
         $this->addBinding(array_merge(...$components['values']), 'insert');
 
         return "INSERT INTO {$table} ({$columns}) VALUES {$placeholders}";
+    }
+
+    protected function compileInsertPlaceholders(array $values): string
+    {
+        $rowPlaceholder = $this->compileInsertRowPlaceholder(count($values[0]));
+
+        return implode(', ', array_fill(0, count($values), $rowPlaceholder));
+    }
+
+    protected function compileInsertRowPlaceholder(int $columnCount): string
+    {
+        return '(' . implode(', ', array_fill(0, $columnCount, '?')) . ')';
     }
 
     public function compileUpdate(array $components): string
