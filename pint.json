@@ -1,3 +1,7 @@
 {
-    "preset": "psr12"
+    "preset": "psr12",
+    "rules": {
+        "no_blank_lines_after_phpdoc": true,
+        "no_whitespace_in_blank_line": true
+    }
 }

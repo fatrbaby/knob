@@ -754,6 +754,7 @@ class Builder
     public function clone(): self
     {
         $builder = new self($this->connection);
+
         $builder->table = $this->table;
         $builder->alias = $this->alias;
         $builder->columns = $this->columns;
@@ -767,6 +768,7 @@ class Builder
         $builder->offset = $this->offset;
         $builder->unions = $this->unions;
         $builder->grammar = $this->grammar;
+
         return $builder;
     }
 }

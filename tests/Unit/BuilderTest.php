@@ -555,6 +555,79 @@ describe('Builder', function () {
             expect($subquery->toSqlParts()['bindings'])->toBe(['active']);
             expect($subquery->toSqlParts()['bindings'])->toBe(['active']);
         });
+
+        it('preserves complex subquery bindings across repeated snapshots and execution', function () {
+            Knob::table('users')->insert([
+                ['name' => 'Alex', 'email' => 'alex@example.com', 'status' => 'pending', 'age' => 22],
+                ['name' => 'Sam', 'email' => 'sam@example.com', 'status' => 'pending', 'age' => 40],
+            ]);
+
+            $pdo = Knob::getConnection();
+            $pdo->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT, published INTEGER, score INTEGER)');
+            Knob::table('posts')->insert([
+                ['user_id' => 1, 'title' => 'John A', 'published' => 1, 'score' => 6],
+                ['user_id' => 1, 'title' => 'John B', 'published' => 1, 'score' => 7],
+                ['user_id' => 2, 'title' => 'Jane A', 'published' => 1, 'score' => 8],
+                ['user_id' => 3, 'title' => 'Alex A', 'published' => 1, 'score' => 20],
+                ['user_id' => 4, 'title' => 'Sam A', 'published' => 1, 'score' => 30],
+            ]);
+
+            $query = Knob::table('users', 'u')
+                ->select('u.name')
+                ->selectSub(
+                    fn ($q) => $q
+                        ->from('posts')
+                        ->selectRaw('COUNT(*)')
+                        ->whereRaw('posts.user_id = u.id')
+                        ->where('published', 1),
+                    'published_posts'
+                )
+                ->joinSub(
+                    fn ($q) => $q
+                        ->from('posts')
+                        ->selectRaw('user_id, SUM(score) AS total_score')
+                        ->where('published', 1)
+                        ->groupBy('user_id')
+                        ->havingRaw('SUM(score) > 10'),
+                    'post_scores',
+                    'u.id',
+                    '=',
+                    'post_scores.user_id'
+                )
+                ->where(
+                    fn ($q) => $q
+                    ->where('u.status', 'active')
+                    ->orWhere(
+                        fn ($r) => $r
+                        ->where('u.status', 'pending')
+                        ->whereBetween('u.age', [20, 30])
+                    )
+                )
+                ->whereIn(
+                    'u.id',
+                    fn ($q) => $q
+                    ->select('user_id')
+                    ->from('posts')
+                    ->where('published', 1)
+                    ->whereNotIn('score', [])
+                )
+                ->orderBy('u.name');
+
+            $firstSnapshot = $query->toSqlParts();
+            $secondSnapshot = $query->toSqlParts();
+
+            expect($firstSnapshot['sql'])->toContain('(SELECT COUNT(*) FROM "posts" WHERE posts.user_id = u.id AND published = ?) AS "published_posts"');
+            expect($firstSnapshot['sql'])->toContain('INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM "posts" WHERE published = ? GROUP BY "user_id" HAVING SUM(score) > 10) AS "post_scores" ON u.id = post_scores.user_id');
+            expect($firstSnapshot['sql'])->toContain('(u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?))');
+            expect($firstSnapshot['sql'])->toContain('u.id IN (SELECT "user_id" FROM "posts" WHERE published = ? AND 1 = 1)');
+            expect($firstSnapshot['bindings'])->toBe([1, 1, 'active', 'pending', 20, 30, 1]);
+            expect($secondSnapshot['bindings'])->toBe($firstSnapshot['bindings']);
+
+            expect($query->get()->toArray())->toBe([
+                ['name' => 'Alex', 'published_posts' => 1],
+                ['name' => 'John', 'published_posts' => 2],
+            ]);
+        });
     });
 
     describe('whereIn edge cases', function () {
