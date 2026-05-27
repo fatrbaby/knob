@@ -24,6 +24,12 @@ describe('Builder', function () {
             expect($sql['columns'])->toBe(['name', 'email']);
         });
 
+        it('generates distinct select', function () {
+            $sql = Knob::table('users')->distinct()->select('status')->toSqlParts();
+            expect($sql['distinct'])->toBeTrue();
+            expect($sql['sql'])->toContain('SELECT DISTINCT "status" FROM "users"');
+        });
+
         it('generates selectRaw without implicit wildcard', function () {
             $sql = Knob::table('users')->selectRaw('COUNT(*)')->toSqlParts();
             expect($sql['columns'])->toBe(['COUNT(*)']);
@@ -293,6 +299,11 @@ describe('Builder', function () {
         it('plucks keyed values', function () {
             $names = Knob::table('users')->pluck('name', 'id')->toArray();
             expect($names)->toBe([1 => 'John', 2 => 'Jane']);
+        });
+
+        it('gets distinct values', function () {
+            $values = Knob::table('users')->distinct()->pluck('status')->toArray();
+            expect($values)->toBe(['active']);
         });
 
         it('sums column values', function () {

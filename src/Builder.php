@@ -12,6 +12,7 @@ class Builder
     private ?string $table = null;
     private ?string $alias = null;
 
+    private bool $distinct = false;
     private array $columns = ['*'];
     private array $joins = [];
     private array $fromBindings = [];
@@ -22,9 +23,6 @@ class Builder
     private ?int $limit = null;
     private ?int $offset = null;
     private array $unions = [];
-
-    private array $insertValues = [];
-    private array $updateValues = [];
 
     private Grammar $grammar;
 
@@ -46,6 +44,12 @@ class Builder
     {
         $columns = is_array($columns[0] ?? null) ? $columns[0] : $columns;
         $this->columns = $columns;
+        return $this;
+    }
+
+    public function distinct(): Builder
+    {
+        $this->distinct = true;
         return $this;
     }
 
@@ -468,8 +472,6 @@ class Builder
 
     public function insert(array $values): bool
     {
-        $this->insertValues = $values;
-
         if (empty($this->table)) {
             throw new \RuntimeException('Table not set for insert');
         }
@@ -498,8 +500,6 @@ class Builder
 
     public function update(array $values): int
     {
-        $this->updateValues = $values;
-
         $components = [
             'table' => $this->table,
             'values' => $values,
@@ -666,6 +666,7 @@ class Builder
     private function getComponents(): array
     {
         return [
+            'distinct' => $this->distinct,
             'columns' => $this->columns,
             'from' => [$this->table, $this->alias, $this->fromBindings],
             'joins' => $this->joins,
@@ -757,6 +758,7 @@ class Builder
 
         $builder->table = $this->table;
         $builder->alias = $this->alias;
+        $builder->distinct = $this->distinct;
         $builder->columns = $this->columns;
         $builder->joins = $this->joins;
         $builder->fromBindings = $this->fromBindings;

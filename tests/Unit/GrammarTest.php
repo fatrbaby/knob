@@ -84,4 +84,101 @@ describe('Grammar compilation', function () {
         'sqlite' => [new SqliteGrammar(), 'SELECT "id", "name" FROM "users" ORDER BY id ASC LIMIT 10 OFFSET 20'],
         'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] ORDER BY id ASC OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY'],
     ]);
+
+    it('compiles complex subquery components and bindings for each supported database', function (Grammar $grammar, string $expectedSql, array $expectedBindings) {
+        $sql = $grammar->compileSelect(selectComponents([
+            'columns' => [
+                'u.name',
+                [
+                    'column' => '(SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?)',
+                    'alias' => 'published_posts',
+                    'bindings' => [1],
+                ],
+            ],
+            'from' => ['(SELECT id, name, status, age FROM users WHERE status <> ?)', 'u', ['banned']],
+            'joins' => [[
+                'type' => 'INNER JOIN',
+                'table' => '(SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10)',
+                'alias' => 'post_scores',
+                'clauses' => [['u.id', '=', 'post_scores.user_id']],
+                'bindings' => [1],
+            ]],
+            'wheres' => [
+                [
+                    'type' => 'group',
+                    'boolean' => 'AND',
+                    'wheres' => [
+                        [
+                            'type' => 'basic',
+                            'column' => 'u.status',
+                            'operator' => '=',
+                            'value' => 'active',
+                            'boolean' => 'AND',
+                        ],
+                        [
+                            'type' => 'group',
+                            'boolean' => 'OR',
+                            'wheres' => [
+                                [
+                                    'type' => 'basic',
+                                    'column' => 'u.status',
+                                    'operator' => '=',
+                                    'value' => 'pending',
+                                    'boolean' => 'AND',
+                                ],
+                                [
+                                    'type' => 'between',
+                                    'column' => 'u.age',
+                                    'values' => [20, 30],
+                                    'boolean' => 'AND',
+                                    'not' => false,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                [
+                    'type' => 'inSub',
+                    'column' => 'u.id',
+                    'query' => [
+                        'sql' => 'SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)',
+                        'bindings' => [1, 0, -1],
+                    ],
+                    'boolean' => 'AND',
+                ],
+            ],
+            'orders' => [['column' => 'u.name', 'direction' => 'ASC']],
+            'limit' => 5,
+            'offset' => 10,
+            'unions' => [[
+                'all' => true,
+                'sql' => 'SELECT name FROM archived_users WHERE restored = ?',
+                'bindings' => [0],
+            ]],
+        ]));
+
+        expect($sql)->toBe($expectedSql);
+        expect($grammar->getBindings())->toBe($expectedBindings);
+    })->with([
+        'mysql' => [
+            new MySqlGrammar(),
+            'SELECT u.name, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS `published_posts` FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS `u` INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS `post_scores` ON u.id = post_scores.user_id WHERE (u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?)) AND u.id IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) ORDER BY u.name ASC LIMIT 5 OFFSET 10 UNION ALL SELECT name FROM archived_users WHERE restored = ?',
+            [1, 'banned', 1, 'active', 'pending', 20, 30, 1, 0, -1, 0],
+        ],
+        'postgres' => [
+            new PostgresGrammar(),
+            'SELECT u.name, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS "published_posts" FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS "u" INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS "post_scores" ON u.id = post_scores.user_id WHERE (u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?)) AND u.id IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) ORDER BY u.name ASC LIMIT 5 OFFSET 10 UNION ALL SELECT name FROM archived_users WHERE restored = ?',
+            [1, 'banned', 1, 'active', 'pending', 20, 30, 1, 0, -1, 0],
+        ],
+        'sqlite' => [
+            new SqliteGrammar(),
+            'SELECT u.name, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS "published_posts" FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS "u" INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS "post_scores" ON u.id = post_scores.user_id WHERE (u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?)) AND u.id IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) ORDER BY u.name ASC LIMIT 5 OFFSET 10 UNION ALL SELECT name FROM archived_users WHERE restored = ?',
+            [1, 'banned', 1, 'active', 'pending', 20, 30, 1, 0, -1, 0],
+        ],
+        'sqlserver' => [
+            new SqlServerGrammar(),
+            'SELECT u.name, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS [published_posts] FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS [u] INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS [post_scores] ON u.id = post_scores.user_id WHERE (u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?)) AND u.id IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) ORDER BY u.name ASC OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY UNION ALL SELECT name FROM archived_users WHERE restored = ?',
+            [1, 'banned', 1, 'active', 'pending', 20, 30, 1, 0, -1, 0],
+        ],
+    ]);
 });

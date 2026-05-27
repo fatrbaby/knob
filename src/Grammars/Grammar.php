@@ -26,7 +26,8 @@ abstract class Grammar
         $sql = [];
 
         if (! empty($components['columns'])) {
-            $sql[] = 'SELECT ' . $this->compileColumns($components['columns']);
+            $select = ($components['distinct'] ?? false) ? 'SELECT DISTINCT ' : 'SELECT ';
+            $sql[] = $select . $this->compileColumns($components['columns']);
         }
 
         if (! empty($components['from'])) {
