@@ -1,6 +1,6 @@
 # Knob
 
-Knob is a database query builder library ported from Laravel. It provides a fluent, chainable interface for building SQL queries across multiple database drivers.
+Knob is a simple, lightweight database query builder inspired by Laravel. It provides a fluent, chainable interface for building SQL queries across multiple database drivers.
 
 ## Requirements
 

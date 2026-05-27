@@ -12,3 +12,4 @@
 /Makefile           export-ignore
 /openspec           export-ignore
 .claude             export-ignore
+CLAUDE.md           export-ignore
