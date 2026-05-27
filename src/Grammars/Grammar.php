@@ -72,17 +72,22 @@ abstract class Grammar
                 foreach ($column['bindings'] ?? [] as $binding) {
                     $this->addBinding($binding, 'select');
                 }
+
                 return $column['column'] . ' AS ' . $this->quoteIdentifier($column['alias']);
             }
+
             if ($column === '*') {
                 return $column;
             }
+
             if (is_int($column) || is_float($column)) {
                 return (string) $column;
             }
+
             if (str_contains($column, '(') || str_contains($column, ')')) {
                 return $column;
             }
+
             return $this->isQualified($column) ? $column : $this->quoteIdentifier($column);
         }, $columns));
     }
@@ -90,25 +95,31 @@ abstract class Grammar
     protected function compileFrom(array $from): string
     {
         [$table, $alias, $bindings] = array_pad($from, 3, []);
+
         if (! $table) {
             return '';
         }
+
         foreach ($bindings as $binding) {
             $this->addBinding($binding, 'from');
         }
         $tableSql = str_starts_with($table, '(') ? $table : $this->quoteIdentifier($table);
+
         if ($alias) {
             return $tableSql . ' AS ' . $this->quoteIdentifier($alias);
         }
+
         return $tableSql;
     }
 
     protected function compileJoins(array $joins): string
     {
         $sql = [];
+
         foreach ($joins as $join) {
             ['type' => $type, 'table' => $table, 'clauses' => $clauses] = $join;
             $tableSql = $this->compileJoinTable($join);
+
             foreach ($join['bindings'] ?? [] as $binding) {
                 $this->addBinding($binding, 'join');
             }
@@ -120,6 +131,7 @@ abstract class Grammar
 
             $sql[] = "{$type} {$tableSql} ON " . $this->compileJoinClauses($clauses);
         }
+
         return implode(' ', $sql);
     }
 
@@ -140,6 +152,7 @@ abstract class Grammar
     {
         return implode(' AND ', array_map(function ($clause) {
             [$first, $operator, $second] = $clause;
+
             return "{$first} {$operator} {$second}";
         }, $clauses));
     }
@@ -147,8 +160,10 @@ abstract class Grammar
     protected function compileWheres(array $wheres): string
     {
         $conditions = [];
+
         foreach ($wheres as $i => $where) {
             $sql = $this->compileWhere($where);
+
             if ($i === 0) {
                 $conditions[] = $sql;
                 continue;
@@ -157,6 +172,7 @@ abstract class Grammar
             $boolean = $where['boolean'] ?? 'AND';
             $conditions[] = "{$boolean} {$sql}";
         }
+
         return implode(' ', $conditions);
     }
 
@@ -171,6 +187,8 @@ abstract class Grammar
             'notIn' => $this->compileWhereNotIn($where),
             'notInSub' => $this->compileWhereNotInSub($where),
             'between' => $this->compileWhereBetween($where),
+            'like' => $this->compileWhereLike($where),
+            'column' => $this->compileWhereColumn($where),
             'null' => $this->compileWhereNull($where),
             'notNull' => $this->compileWhereNotNull($where),
             'sub' => $this->compileWhereSub($where),
@@ -241,7 +259,28 @@ abstract class Grammar
         $this->addBinding($values[1], 'where');
 
         $op = $not ? 'NOT BETWEEN' : 'BETWEEN';
+
         return "{$column} {$op} ? AND ?";
+    }
+
+    protected function compileWhereLike(array $where): string
+    {
+        $column = $where['column'];
+        $value = $where['value'];
+        $not = $where['not'] ?? false;
+
+        $this->addBinding($value, 'where');
+
+        $op = $not ? 'NOT LIKE' : 'LIKE';
+
+        return "{$column} {$op} ?";
+    }
+
+    protected function compileWhereColumn(array $where): string
+    {
+        ['first' => $first, 'operator' => $operator, 'second' => $second] = $where;
+
+        return "{$first} {$operator} {$second}";
     }
 
     protected function compileWhereNull(array $where): string
@@ -285,13 +324,16 @@ abstract class Grammar
     protected function compileWhereGroup(array $where): string
     {
         $wheres = $where['wheres'];
+
         if (empty($wheres)) {
             return '';
         }
 
         $parts = [];
+
         foreach ($wheres as $i => $w) {
             $sql = $this->compileWhere($w);
+
             if ($i === 0) {
                 $parts[] = $sql;
             } else {
@@ -343,9 +385,11 @@ abstract class Grammar
     protected function compileHavings(array $havings): string
     {
         $conditions = [];
+
         foreach ($havings as $having) {
             $conditions[] = $this->compileHaving($having);
         }
+
         return implode(' AND ', $conditions);
     }
 
@@ -365,6 +409,7 @@ abstract class Grammar
         ['column' => $column, 'operator' => $operator, 'value' => $value] = $having;
 
         $this->addBinding($value, 'having');
+
         return "{$column} {$operator} ?";
     }
 
@@ -391,12 +436,14 @@ abstract class Grammar
     protected function compileUnions(array $unions): string
     {
         $sql = [];
+
         foreach ($unions as $union) {
             foreach ($union['bindings'] ?? [] as $binding) {
                 $this->addBinding($binding, 'union');
             }
             $sql[] = ($union['all'] ? 'UNION ALL ' : 'UNION ') . $union['sql'];
         }
+
         return implode(' ', $sql);
     }
 
@@ -520,6 +567,7 @@ abstract class Grammar
         if ($value instanceof BackedEnum) {
             return $value->value;
         }
+
         return $value;
     }
 

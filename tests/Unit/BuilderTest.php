@@ -26,14 +26,14 @@ describe('Builder', function () {
 
         it('generates distinct select', function () {
             $sql = Knob::table('users')->distinct()->select('status')->toSqlParts();
-            expect($sql['distinct'])->toBeTrue();
-            expect($sql['sql'])->toContain('SELECT DISTINCT "status" FROM "users"');
+            expect($sql['distinct'])->toBeTrue()
+                ->and($sql['sql'])->toContain('SELECT DISTINCT "status" FROM "users"');
         });
 
         it('generates selectRaw without implicit wildcard', function () {
             $sql = Knob::table('users')->selectRaw('COUNT(*)')->toSqlParts();
-            expect($sql['columns'])->toBe(['COUNT(*)']);
-            expect($sql['sql'])->toContain('SELECT COUNT(*) FROM "users"');
+            expect($sql['columns'])->toBe(['COUNT(*)'])
+                ->and($sql['sql'])->toContain('SELECT COUNT(*) FROM "users"');
         });
 
         it('supports raw string selectSub', function () {
@@ -45,24 +45,24 @@ describe('Builder', function () {
     describe('where', function () {
         it('generates basic where clause', function () {
             $sql = Knob::table('users')->where('status', 'active')->toSqlParts();
-            expect($sql['wheres'])->toHaveCount(1);
-            expect($sql['wheres'][0]['type'])->toBe('basic');
-            expect($sql['wheres'][0]['column'])->toBe('status');
-            expect($sql['wheres'][0]['operator'])->toBe('=');
-            expect($sql['wheres'][0]['value'])->toBe('active');
+            expect($sql['wheres'])->toHaveCount(1)
+                ->and($sql['wheres'][0]['type'])->toBe('basic')
+                ->and($sql['wheres'][0]['column'])->toBe('status')
+                ->and($sql['wheres'][0]['operator'])->toBe('=')
+                ->and($sql['wheres'][0]['value'])->toBe('active');
         });
 
         it('generates where with operator', function () {
             $sql = Knob::table('users')->where('age', '>', 18)->toSqlParts();
-            expect($sql['wheres'][0]['operator'])->toBe('>');
-            expect($sql['wheres'][0]['value'])->toBe(18);
+            expect($sql['wheres'][0]['operator'])->toBe('>')
+                ->and($sql['wheres'][0]['value'])->toBe(18);
         });
 
         it('generates or where', function () {
             $sql = Knob::table('users')->where('status', 'active')->orWhere('status', 'pending')->toSqlParts();
-            expect($sql['wheres'])->toHaveCount(2);
-            expect($sql['wheres'][0]['boolean'])->toBe('AND');
-            expect($sql['wheres'][1]['boolean'])->toBe('OR');
+            expect($sql['wheres'])->toHaveCount(2)
+                ->and($sql['wheres'][0]['boolean'])->toBe('AND')
+                ->and($sql['wheres'][1]['boolean'])->toBe('OR');
         });
 
         it('compiles or where with OR connector', function () {
@@ -74,8 +74,8 @@ describe('Builder', function () {
     describe('whereGroup', function () {
         it('generates basic nested AND group', function () {
             $sql = Knob::table('users')->where('status', 'active')->where(fn ($q) => $q->where('type', 'A')->orWhere('type', 'B'))->toSqlParts();
-            expect($sql['sql'])->toContain('status = ?');
-            expect($sql['sql'])->toContain('(type = ? OR type = ?)');
+            expect($sql['sql'])->toContain('status = ?')
+                ->and($sql['sql'])->toContain('(type = ? OR type = ?)');
         });
 
         it('generates nested group with AND conditions inside', function () {
@@ -88,8 +88,8 @@ describe('Builder', function () {
                 ->where(fn ($q) => $q->where('a', 1)->orWhere('b', 2))
                 ->where(fn ($q) => $q->where('c', 3)->orWhere('d', 4))
                 ->toSqlParts();
-            expect($sql['sql'])->toContain('(a = ? OR b = ?)');
-            expect($sql['sql'])->toContain('(c = ? OR d = ?)');
+            expect($sql['sql'])->toContain('(a = ? OR b = ?)')
+                ->and($sql['sql'])->toContain('(c = ? OR d = ?)');
         });
 
         it('generates deeply nested groups (2 levels)', function () {
@@ -97,8 +97,8 @@ describe('Builder', function () {
                 ->where('x', 1)
                 ->where(fn ($q) => $q->where(fn ($r) => $r->where('a', 'A')->orWhere('b', 'B'))->where('y', 2))
                 ->toSqlParts();
-            expect($sql['sql'])->toContain('x = ?');
-            expect($sql['sql'])->toContain('((a = ? OR b = ?) AND y = ?)');
+            expect($sql['sql'])->toContain('x = ?')
+                ->and($sql['sql'])->toContain('((a = ? OR b = ?) AND y = ?)');
         });
 
         it('preserves bindings order across groups', function () {
@@ -112,14 +112,14 @@ describe('Builder', function () {
 
         it('handles whereIn inside group', function () {
             $sql = Knob::table('users')->where(fn ($q) => $q->whereIn('id', [1, 2, 3]))->toSqlParts();
-            expect($sql['sql'])->toContain('(id IN (?, ?, ?))');
-            expect($sql['bindings'])->toBe([1, 2, 3]);
+            expect($sql['sql'])->toContain('(id IN (?, ?, ?))')
+                ->and($sql['bindings'])->toBe([1, 2, 3]);
         });
 
         it('handles whereBetween inside group', function () {
             $sql = Knob::table('users')->where(fn ($q) => $q->whereBetween('age', [18, 30]))->toSqlParts();
-            expect($sql['sql'])->toContain('(age BETWEEN ? AND ?)');
-            expect($sql['bindings'])->toBe([18, 30]);
+            expect($sql['sql'])->toContain('(age BETWEEN ? AND ?)')
+                ->and($sql['bindings'])->toBe([18, 30]);
         });
 
         it('handles whereNull / whereNotNull inside group', function () {
@@ -141,28 +141,90 @@ describe('Builder', function () {
     describe('whereIn', function () {
         it('generates whereIn clause', function () {
             $sql = Knob::table('users')->whereIn('id', [1, 2, 3])->toSqlParts();
-            expect($sql['wheres'][0]['type'])->toBe('in');
-            expect($sql['wheres'][0]['values'])->toBe([1, 2, 3]);
+            expect($sql['wheres'][0]['type'])->toBe('in')
+                ->and($sql['wheres'][0]['values'])->toBe([1, 2, 3]);
         });
 
         it('generates orWhereIn clause', function () {
             $sql = Knob::table('users')->where('status', 'active')->orWhereIn('id', [1, 2])->toSqlParts();
-            expect($sql['sql'])->toContain('status = ? OR id IN (?, ?)');
-            expect($sql['bindings'])->toBe(['active', 1, 2]);
+            expect($sql['sql'])->toContain('status = ? OR id IN (?, ?)')
+                ->and($sql['bindings'])->toBe(['active', 1, 2]);
         });
 
         it('generates whereNotIn clause', function () {
             $sql = Knob::table('users')->whereNotIn('id', [1, 2])->toSqlParts();
-            expect($sql['sql'])->toContain('id NOT IN (?, ?)');
-            expect($sql['bindings'])->toBe([1, 2]);
+            expect($sql['sql'])->toContain('id NOT IN (?, ?)')
+                ->and($sql['bindings'])->toBe([1, 2]);
+        });
+
+        it('generates orWhereNotIn clause', function () {
+            $sql = Knob::table('users')->where('status', 'active')->orWhereNotIn('id', [1, 2])->toSqlParts();
+            expect($sql['sql'])->toContain('status = ? OR id NOT IN (?, ?)')
+                ->and($sql['bindings'])->toBe(['active', 1, 2]);
+        });
+
+        it('generates orWhereNotIn with subquery input', function () {
+            $subquery = Knob::query()->select('id')->from('users')->where('status', 'inactive');
+            $sql = Knob::table('posts')->where('published', true)->orWhereNotIn('user_id', $subquery)->toSqlParts();
+
+            expect($sql['sql'])->toContain(
+                'published = ? OR user_id NOT IN (SELECT "id" FROM "users" WHERE status = ?)'
+            )
+                ->and($sql['bindings'])->toBe([true, 'inactive']);
+        });
+    });
+
+    describe('common where predicates', function () {
+        it('generates like and or like clauses', function () {
+            $sql = Knob::table('users')->whereLike('name', 'A%')->orWhereLike('email', '%@example.com')->toSqlParts();
+            expect($sql['sql'])->toContain('name LIKE ? OR email LIKE ?')
+                ->and($sql['bindings'])->toBe(['A%', '%@example.com']);
+        });
+
+        it('generates not like and or not like clauses', function () {
+            $sql = Knob::table('users')->whereNotLike('email', '%@example.test')->orWhereNotLike('name', 'Test%')->toSqlParts();
+            expect($sql['sql'])->toContain('email NOT LIKE ? OR name NOT LIKE ?')
+                ->and($sql['bindings'])->toBe(['%@example.test', 'Test%']);
+        });
+
+        it('generates column comparison clauses without bindings', function () {
+            $sql = Knob::table('users')->whereColumn('created_at', '>', 'updated_at')->toSqlParts();
+            expect($sql['sql'])->toContain('created_at > updated_at')
+                ->and($sql['bindings'])->toBe([]);
+        });
+
+        it('generates column equality shorthand and or column comparison clauses', function () {
+            $sql = Knob::table('users')->whereColumn('created_at', 'updated_at')->orWhereColumn('deleted_at', '<', 'updated_at')->toSqlParts();
+            expect($sql['sql'])->toContain('created_at = updated_at OR deleted_at < updated_at')
+                ->and($sql['bindings'])->toBe([]);
+        });
+
+        it('generates or between and or not between clauses', function () {
+            $sql = Knob::table('users')
+                ->where('status', 'active')
+                ->orWhereBetween('age', [18, 30])
+                ->orWhereNotBetween('score', [50, 80])
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('status = ? OR age BETWEEN ? AND ? OR score NOT BETWEEN ? AND ?')
+                ->and($sql['bindings'])->toBe(['active', 18, 30, 50, 80]);
+        });
+
+        it('generates common predicates inside grouped where clauses', function () {
+            $sql = Knob::table('users')
+                ->where(fn ($q) => $q->whereLike('name', 'A%')->orWhereColumn('created_at', '>', 'updated_at'))
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('(name LIKE ? OR created_at > updated_at)')
+                ->and($sql['bindings'])->toBe(['A%']);
         });
     });
 
     describe('whereNull', function () {
         it('generates whereNull clause', function () {
             $sql = Knob::table('users')->whereNull('email')->toSqlParts();
-            expect($sql['wheres'][0]['type'])->toBe('null');
-            expect($sql['wheres'][0]['column'])->toBe('email');
+            expect($sql['wheres'][0]['type'])->toBe('null')
+                ->and($sql['wheres'][0]['column'])->toBe('email');
         });
 
         it('generates orWhereNull clause', function () {
@@ -187,15 +249,15 @@ describe('Builder', function () {
                 ->join('posts', 'u.id', '=', 'p.user_id', 'p')
                 ->toSqlParts();
 
-            expect($sql['joins'][0]['alias'])->toBe('p');
-            expect($sql['sql'])->toContain('FROM "users" AS "u" INNER JOIN "posts" AS "p" ON u.id = p.user_id');
+            expect($sql['joins'][0]['alias'])->toBe('p')
+                ->and($sql['sql'])->toContain('FROM "users" AS "u" INNER JOIN "posts" AS "p" ON u.id = p.user_id');
         });
 
         it('generates left join', function () {
             $sql = Knob::table('users')->leftJoin('posts', 'users.id', '=', 'posts.user_id')->toSqlParts();
-            expect($sql['joins'])->toHaveCount(1);
-            expect($sql['joins'][0]['type'])->toBe('LEFT JOIN');
-            expect($sql['joins'][0]['table'])->toBe('posts');
+            expect($sql['joins'])->toHaveCount(1)
+                ->and($sql['joins'][0]['type'])->toBe('LEFT JOIN')
+                ->and($sql['joins'][0]['table'])->toBe('posts');
         });
 
         it('generates right join', function () {
@@ -205,23 +267,23 @@ describe('Builder', function () {
 
         it('generates cross join without on clause', function () {
             $sql = Knob::table('users')->crossJoin('posts')->toSqlParts();
-            expect($sql['sql'])->toContain('CROSS JOIN "posts"');
-            expect($sql['sql'])->not->toContain(' ON ');
+            expect($sql['sql'])->toContain('CROSS JOIN "posts"')
+                ->and($sql['sql'])->not->toContain(' ON ');
         });
 
         it('generates cross join with table alias', function () {
             $sql = Knob::table('users')->crossJoin('roles', 'r')->toSqlParts();
-            expect($sql['sql'])->toContain('CROSS JOIN "roles" AS "r"');
-            expect($sql['sql'])->not->toContain(' ON ');
+            expect($sql['sql'])->toContain('CROSS JOIN "roles" AS "r"')
+                ->and($sql['sql'])->not->toContain(' ON ');
         });
     });
 
     describe('orderBy', function () {
         it('generates order by', function () {
             $sql = Knob::table('users')->orderBy('name', 'ASC')->toSqlParts();
-            expect($sql['orders'])->toHaveCount(1);
-            expect($sql['orders'][0]['column'])->toBe('name');
-            expect($sql['orders'][0]['direction'])->toBe('ASC');
+            expect($sql['orders'])->toHaveCount(1)
+                ->and($sql['orders'][0]['column'])->toBe('name')
+                ->and($sql['orders'][0]['direction'])->toBe('ASC');
         });
 
         it('generates order by desc', function () {
@@ -243,8 +305,8 @@ describe('Builder', function () {
     describe('limit and offset', function () {
         it('generates limit and offset', function () {
             $sql = Knob::table('users')->limit(10)->offset(20)->toSqlParts();
-            expect($sql['limit'])->toBe(10);
-            expect($sql['offset'])->toBe(20);
+            expect($sql['limit'])->toBe(10)
+                ->and($sql['offset'])->toBe(20);
         });
     });
 
@@ -262,18 +324,18 @@ describe('Builder', function () {
                 ->havingRaw('SUM(score) > 10')
                 ->toSqlParts();
 
-            expect($sql['groups'])->toBe(['user_id', 'status']);
-            expect($sql['sql'])->toContain('GROUP BY "user_id", "status"');
-            expect($sql['sql'])->toContain('HAVING count > ? AND SUM(score) > 10');
-            expect($sql['bindings'])->toBe([1]);
+            expect($sql['groups'])->toBe(['user_id', 'status'])
+                ->and($sql['sql'])->toContain('GROUP BY "user_id", "status"')
+                ->and($sql['sql'])->toContain('HAVING count > ? AND SUM(score) > 10')
+                ->and($sql['bindings'])->toBe([1]);
         });
     });
 
     describe('execution', function () {
         it('gets all results', function () {
             $results = Knob::table('users')->get();
-            expect($results)->toBeInstanceOf(\Knob\Collection::class);
-            expect($results->count())->toBe(2);
+            expect($results)->toBeInstanceOf(\Knob\Collection::class)
+                ->and($results->count())->toBe(2);
         });
 
         it('gets first result', function () {
@@ -325,12 +387,12 @@ describe('Builder', function () {
         it('paginates results', function () {
             $page = Knob::table('users')->orderBy('id')->paginate(1, 2);
 
-            expect($page['total'])->toBe(2);
-            expect($page['per_page'])->toBe(1);
-            expect($page['current_page'])->toBe(2);
-            expect($page['last_page'])->toBe(2);
-            expect($page['items'])->toHaveCount(1);
-            expect($page['items'][0]['name'])->toBe('Jane');
+            expect($page['total'])->toBe(2)
+                ->and($page['per_page'])->toBe(1)
+                ->and($page['current_page'])->toBe(2)
+                ->and($page['last_page'])->toBe(2)
+                ->and($page['items'])->toHaveCount(1)
+                ->and($page['items'][0]['name'])->toBe('Jane');
         });
 
         it('inserts a record', function () {
@@ -353,8 +415,8 @@ describe('Builder', function () {
                 'age' => 28,
             ]);
 
-            expect($id)->not->toBeFalse();
-            expect((int) $id)->toBeGreaterThan(0);
+            expect($id)->not->toBeFalse()
+                ->and((int)$id)->toBeGreaterThan(0);
         });
 
         it('updates matching records', function () {
@@ -362,15 +424,15 @@ describe('Builder', function () {
                 'status' => 'inactive',
             ]);
 
-            expect($updated)->toBe(1);
-            expect(Knob::table('users')->where('status', 'inactive')->count())->toBe(1);
+            expect($updated)->toBe(1)
+                ->and(Knob::table('users')->where('status', 'inactive')->count())->toBe(1);
         });
 
         it('deletes matching records', function () {
             $deleted = Knob::table('users')->where('name', 'Jane')->delete();
 
-            expect($deleted)->toBe(1);
-            expect(Knob::table('users')->count())->toBe(1);
+            expect($deleted)->toBe(1)
+                ->and(Knob::table('users')->count())->toBe(1);
         });
     });
 
@@ -381,9 +443,9 @@ describe('Builder', function () {
                 ->where('age', '>', 18)
                 ->toSql();
 
-            expect($sql)->toContain("status = 'active'");
-            expect($sql)->toContain('age > 18');
-            expect($sql)->not->toContain('?');
+            expect($sql)->toContain("status = 'active'")
+                ->and($sql)->toContain('age > 18')
+                ->and($sql)->not->toContain('?');
         });
 
         it('interpolates booleans and nulls', function () {
@@ -392,8 +454,8 @@ describe('Builder', function () {
                 ->orWhereRaw('is_admin = ?', [true])
                 ->toSql();
 
-            expect($sql)->toContain('status = NULL');
-            expect($sql)->toContain('is_admin = 1');
+            expect($sql)->toContain('status = NULL')
+                ->and($sql)->toContain('is_admin = 1');
         });
     });
 
@@ -408,8 +470,10 @@ describe('Builder', function () {
                 ->where('status', 'active')
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('(SELECT COUNT(*) FROM "posts" WHERE published = ? AND posts.user_id = users.id) AS "published_posts"');
-            expect($sql['bindings'])->toBe([true, 'active']);
+            expect($sql['sql'])->toContain(
+                '(SELECT COUNT(*) FROM "posts" WHERE published = ? AND posts.user_id = users.id) AS "published_posts"'
+            )
+                ->and($sql['bindings'])->toBe([true, 'active']);
         });
 
         it('supports selectSub with reusable builder subquery', function () {
@@ -425,8 +489,10 @@ describe('Builder', function () {
                 ->where('status', 'active')
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('(SELECT COUNT(*) FROM "posts" WHERE published = ? AND posts.user_id = users.id) AS "published_posts"');
-            expect($sql['bindings'])->toBe([true, 'active']);
+            expect($sql['sql'])->toContain(
+                '(SELECT COUNT(*) FROM "posts" WHERE published = ? AND posts.user_id = users.id) AS "published_posts"'
+            )
+                ->and($sql['bindings'])->toBe([true, 'active']);
         });
 
         it('passes bindings through fromSub', function () {
@@ -458,8 +524,8 @@ describe('Builder', function () {
                 ->whereIn('user_id', fn ($q) => $q->select('id')->from('users')->where('status', 'active'))
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('user_id IN (SELECT "id" FROM "users" WHERE status = ?)');
-            expect($sql['bindings'])->toBe(['active']);
+            expect($sql['sql'])->toContain('user_id IN (SELECT "id" FROM "users" WHERE status = ?)')
+                ->and($sql['bindings'])->toBe(['active']);
         });
 
         it('supports whereNotIn with reusable builder input', function () {
@@ -472,8 +538,8 @@ describe('Builder', function () {
                 ->whereNotIn('user_id', $subquery)
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('user_id NOT IN (SELECT "id" FROM "users" WHERE status = ?)');
-            expect($sql['bindings'])->toBe(['inactive']);
+            expect($sql['sql'])->toContain('user_id NOT IN (SELECT "id" FROM "users" WHERE status = ?)')
+                ->and($sql['bindings'])->toBe(['inactive']);
         });
 
         it('supports whereSub with reusable builder input', function () {
@@ -486,8 +552,8 @@ describe('Builder', function () {
                 ->whereSub('score', '>=', $subquery)
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('score >= (SELECT MAX(score) FROM "scores" WHERE scores.user_id = ?)');
-            expect($sql['bindings'])->toBe([10]);
+            expect($sql['sql'])->toContain('score >= (SELECT MAX(score) FROM "scores" WHERE scores.user_id = ?)')
+                ->and($sql['bindings'])->toBe([10]);
         });
 
         it('supports whereExists with reusable builder input', function () {
@@ -500,8 +566,10 @@ describe('Builder', function () {
                 ->whereExists($subquery)
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('EXISTS (SELECT * FROM "posts" WHERE posts.user_id = users.id AND published = ?)');
-            expect($sql['bindings'])->toBe([true]);
+            expect($sql['sql'])->toContain(
+                'EXISTS (SELECT * FROM "posts" WHERE posts.user_id = users.id AND published = ?)'
+            )
+                ->and($sql['bindings'])->toBe([true]);
         });
 
         it('passes bindings through union', function () {
@@ -519,8 +587,8 @@ describe('Builder', function () {
                 ->unionAll(fn ($q) => $q->from('users')->where('status', 'pending'))
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('UNION ALL SELECT * FROM "users" WHERE status = ?');
-            expect($sql['bindings'])->toBe(['active', 'pending']);
+            expect($sql['sql'])->toContain('UNION ALL SELECT * FROM "users" WHERE status = ?')
+                ->and($sql['bindings'])->toBe(['active', 'pending']);
         });
 
         it('supports unionAll with reusable builder input', function () {
@@ -533,8 +601,8 @@ describe('Builder', function () {
                 ->unionAll($union)
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('UNION ALL SELECT * FROM "users" WHERE status = ?');
-            expect($sql['bindings'])->toBe(['active', 'pending']);
+            expect($sql['sql'])->toContain('UNION ALL SELECT * FROM "users" WHERE status = ?')
+                ->and($sql['bindings'])->toBe(['active', 'pending']);
         });
 
         it('preserves binding order across select from join and where subqueries', function () {
@@ -563,8 +631,8 @@ describe('Builder', function () {
                 ->from('users')
                 ->where('status', 'active');
 
-            expect($subquery->toSqlParts()['bindings'])->toBe(['active']);
-            expect($subquery->toSqlParts()['bindings'])->toBe(['active']);
+            expect($subquery->toSqlParts()['bindings'])->toBe(['active'])
+                ->and($subquery->toSqlParts()['bindings'])->toBe(['active']);
         });
 
         it('preserves complex subquery bindings across repeated snapshots and execution', function () {
@@ -627,17 +695,22 @@ describe('Builder', function () {
             $firstSnapshot = $query->toSqlParts();
             $secondSnapshot = $query->toSqlParts();
 
-            expect($firstSnapshot['sql'])->toContain('(SELECT COUNT(*) FROM "posts" WHERE posts.user_id = u.id AND published = ?) AS "published_posts"');
-            expect($firstSnapshot['sql'])->toContain('INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM "posts" WHERE published = ? GROUP BY "user_id" HAVING SUM(score) > 10) AS "post_scores" ON u.id = post_scores.user_id');
-            expect($firstSnapshot['sql'])->toContain('(u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?))');
-            expect($firstSnapshot['sql'])->toContain('u.id IN (SELECT "user_id" FROM "posts" WHERE published = ? AND 1 = 1)');
-            expect($firstSnapshot['bindings'])->toBe([1, 1, 'active', 'pending', 20, 30, 1]);
-            expect($secondSnapshot['bindings'])->toBe($firstSnapshot['bindings']);
-
-            expect($query->get()->toArray())->toBe([
-                ['name' => 'Alex', 'published_posts' => 1],
-                ['name' => 'John', 'published_posts' => 2],
-            ]);
+            expect($firstSnapshot['sql'])->toContain(
+                '(SELECT COUNT(*) FROM "posts" WHERE posts.user_id = u.id AND published = ?) AS "published_posts"'
+            )
+                ->and($firstSnapshot['sql'])->toContain(
+                    'INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM "posts" WHERE published = ? GROUP BY "user_id" HAVING SUM(score) > 10) AS "post_scores" ON u.id = post_scores.user_id'
+                )
+                ->and($firstSnapshot['sql'])->toContain('(u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?))')
+                ->and($firstSnapshot['sql'])->toContain(
+                    'u.id IN (SELECT "user_id" FROM "posts" WHERE published = ? AND 1 = 1)'
+                )
+                ->and($firstSnapshot['bindings'])->toBe([1, 1, 'active', 'pending', 20, 30, 1])
+                ->and($secondSnapshot['bindings'])->toBe($firstSnapshot['bindings'])
+                ->and($query->get()->toArray())->toBe([
+                    ['name' => 'Alex', 'published_posts' => 1],
+                    ['name' => 'John', 'published_posts' => 2],
+                ]);
         });
     });
 
@@ -656,8 +729,8 @@ describe('Builder', function () {
     describe('other builder methods', function () {
         it('generates whereNotBetween clause', function () {
             $sql = Knob::table('users')->whereNotBetween('age', [18, 21])->toSqlParts();
-            expect($sql['sql'])->toContain('age NOT BETWEEN ? AND ?');
-            expect($sql['bindings'])->toBe([18, 21]);
+            expect($sql['sql'])->toContain('age NOT BETWEEN ? AND ?')
+                ->and($sql['bindings'])->toBe([18, 21]);
         });
 
         it('generates whereRaw and orWhereRaw clauses', function () {
@@ -666,8 +739,8 @@ describe('Builder', function () {
                 ->orWhereRaw('age > ?', [18])
                 ->toSqlParts();
 
-            expect($sql['sql'])->toContain('status = ? OR age > ?');
-            expect($sql['bindings'])->toBe(['active', 18]);
+            expect($sql['sql'])->toContain('status = ? OR age > ?')
+                ->and($sql['bindings'])->toBe(['active', 18]);
         });
 
         it('executes whereRaw after SQL introspection without duplicate bindings', function () {
@@ -675,10 +748,10 @@ describe('Builder', function () {
                 ->select(['id', 'name'])
                 ->whereRaw('id > ? AND id < ?', ['0', '2']);
 
-            expect($query->toSqlParts()['bindings'])->toBe(['0', '2']);
-            expect($query->get()->toArray())->toBe([
-                ['id' => 1, 'name' => 'John'],
-            ]);
+            expect($query->toSqlParts()['bindings'])->toBe(['0', '2'])
+                ->and($query->get()->toArray())->toBe([
+                    ['id' => 1, 'name' => 'John'],
+                ]);
         });
 
         it('supports whereNotExists clauses', function () {
@@ -701,8 +774,8 @@ describe('Builder', function () {
             $original = Knob::table('users')->where('status', 'active')->orderBy('name');
             $clone = $original->clone()->where('age', '>', 20);
 
-            expect($original->toSqlParts()['sql'])->not->toContain('age > ?');
-            expect($clone->toSqlParts()['sql'])->toContain('age > ?');
+            expect($original->toSqlParts()['sql'])->not->toContain('age > ?')
+                ->and($clone->toSqlParts()['sql'])->toContain('age > ?');
         });
     });
 });

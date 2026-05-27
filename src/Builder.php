@@ -37,6 +37,7 @@ class Builder
         $builder = new self($connection);
         $builder->table = $table;
         $builder->alias = $alias;
+
         return $builder;
     }
 
@@ -44,12 +45,14 @@ class Builder
     {
         $columns = is_array($columns[0] ?? null) ? $columns[0] : $columns;
         $this->columns = $columns;
+
         return $this;
     }
 
     public function distinct(): Builder
     {
         $this->distinct = true;
+
         return $this;
     }
 
@@ -62,10 +65,12 @@ class Builder
                 'alias' => $alias,
                 'bindings' => $subQuery['bindings'],
             ];
+
             return $this;
         }
 
         $this->columns[] = ['column' => "({$column})", 'alias' => $alias];
+
         return $this;
     }
 
@@ -76,6 +81,7 @@ class Builder
         }
 
         $this->columns[] = $expression;
+
         return $this;
     }
 
@@ -83,6 +89,7 @@ class Builder
     {
         $this->table = $table;
         $this->alias = $alias;
+
         return $this;
     }
 
@@ -114,6 +121,7 @@ class Builder
             'alias' => $alias,
             'clauses' => $first ? [[$first, $operator, $second]] : [],
         ];
+
         return $this;
     }
 
@@ -128,6 +136,7 @@ class Builder
             'clauses' => $first ? [[$first, $operator, $second]] : [],
             'bindings' => $subQuery['bindings'],
         ];
+
         return $this;
     }
 
@@ -139,6 +148,7 @@ class Builder
         $this->table = "({$sql})";
         $this->alias = $as;
         $this->fromBindings = $subQuery['bindings'];
+
         return $this;
     }
 
@@ -169,6 +179,7 @@ class Builder
             'value' => $value,
             'boolean' => 'AND',
         ];
+
         return $this;
     }
 
@@ -199,6 +210,7 @@ class Builder
             'value' => $value,
             'boolean' => 'OR',
         ];
+
         return $this;
     }
 
@@ -211,6 +223,7 @@ class Builder
                 'query' => $this->normalizeSubquery($values),
                 'boolean' => 'AND',
             ];
+
             return $this;
         }
 
@@ -220,6 +233,7 @@ class Builder
             'values' => $values,
             'boolean' => 'AND',
         ];
+
         return $this;
     }
 
@@ -232,6 +246,7 @@ class Builder
                 'query' => $this->normalizeSubquery($values),
                 'boolean' => 'OR',
             ];
+
             return $this;
         }
 
@@ -241,6 +256,7 @@ class Builder
             'values' => $values,
             'boolean' => 'OR',
         ];
+
         return $this;
     }
 
@@ -253,6 +269,7 @@ class Builder
                 'query' => $this->normalizeSubquery($values),
                 'boolean' => 'AND',
             ];
+
             return $this;
         }
 
@@ -262,6 +279,30 @@ class Builder
             'values' => $values,
             'boolean' => 'AND',
         ];
+
+        return $this;
+    }
+
+    public function orWhereNotIn(string $column, array|Closure|Builder $values): Builder
+    {
+        if (! is_array($values)) {
+            $this->wheres[] = [
+                'type' => 'notInSub',
+                'column' => $column,
+                'query' => $this->normalizeSubquery($values),
+                'boolean' => 'OR',
+            ];
+
+            return $this;
+        }
+
+        $this->wheres[] = [
+            'type' => 'notIn',
+            'column' => $column,
+            'values' => $values,
+            'boolean' => 'OR',
+        ];
+
         return $this;
     }
 
@@ -274,6 +315,20 @@ class Builder
             'boolean' => 'AND',
             'not' => false,
         ];
+
+        return $this;
+    }
+
+    public function orWhereBetween(string $column, array $values): Builder
+    {
+        $this->wheres[] = [
+            'type' => 'between',
+            'column' => $column,
+            'values' => $values,
+            'boolean' => 'OR',
+            'not' => false,
+        ];
+
         return $this;
     }
 
@@ -286,6 +341,108 @@ class Builder
             'boolean' => 'AND',
             'not' => true,
         ];
+
+        return $this;
+    }
+
+    public function orWhereNotBetween(string $column, array $values): Builder
+    {
+        $this->wheres[] = [
+            'type' => 'between',
+            'column' => $column,
+            'values' => $values,
+            'boolean' => 'OR',
+            'not' => true,
+        ];
+
+        return $this;
+    }
+
+    public function whereLike(string $column, mixed $value): Builder
+    {
+        $this->wheres[] = [
+            'type' => 'like',
+            'column' => $column,
+            'value' => $value,
+            'boolean' => 'AND',
+            'not' => false,
+        ];
+
+        return $this;
+    }
+
+    public function orWhereLike(string $column, mixed $value): Builder
+    {
+        $this->wheres[] = [
+            'type' => 'like',
+            'column' => $column,
+            'value' => $value,
+            'boolean' => 'OR',
+            'not' => false,
+        ];
+
+        return $this;
+    }
+
+    public function whereNotLike(string $column, mixed $value): Builder
+    {
+        $this->wheres[] = [
+            'type' => 'like',
+            'column' => $column,
+            'value' => $value,
+            'boolean' => 'AND',
+            'not' => true,
+        ];
+
+        return $this;
+    }
+
+    public function orWhereNotLike(string $column, mixed $value): Builder
+    {
+        $this->wheres[] = [
+            'type' => 'like',
+            'column' => $column,
+            'value' => $value,
+            'boolean' => 'OR',
+            'not' => true,
+        ];
+
+        return $this;
+    }
+
+    public function whereColumn(string $first, string $operator, ?string $second = null): Builder
+    {
+        if ($second === null) {
+            $second = $operator;
+            $operator = '=';
+        }
+
+        $this->wheres[] = [
+            'type' => 'column',
+            'first' => $first,
+            'operator' => $operator,
+            'second' => $second,
+            'boolean' => 'AND',
+        ];
+
+        return $this;
+    }
+
+    public function orWhereColumn(string $first, string $operator, ?string $second = null): Builder
+    {
+        if ($second === null) {
+            $second = $operator;
+            $operator = '=';
+        }
+
+        $this->wheres[] = [
+            'type' => 'column',
+            'first' => $first,
+            'operator' => $operator,
+            'second' => $second,
+            'boolean' => 'OR',
+        ];
+
         return $this;
     }
 
@@ -296,6 +453,7 @@ class Builder
             'column' => $column,
             'boolean' => 'AND',
         ];
+
         return $this;
     }
 
@@ -306,6 +464,7 @@ class Builder
             'column' => $column,
             'boolean' => 'OR',
         ];
+
         return $this;
     }
 
@@ -316,6 +475,7 @@ class Builder
             'column' => $column,
             'boolean' => 'AND',
         ];
+
         return $this;
     }
 
@@ -326,6 +486,7 @@ class Builder
             'column' => $column,
             'boolean' => 'OR',
         ];
+
         return $this;
     }
 
@@ -337,6 +498,7 @@ class Builder
             'bindings' => $bindings,
             'boolean' => 'AND',
         ];
+
         return $this;
     }
 
@@ -348,6 +510,7 @@ class Builder
             'bindings' => $bindings,
             'boolean' => 'OR',
         ];
+
         return $this;
     }
 
@@ -360,6 +523,7 @@ class Builder
             'query' => $this->normalizeSubquery($callback),
             'boolean' => 'AND',
         ];
+
         return $this;
     }
 
@@ -371,6 +535,7 @@ class Builder
             'boolean' => 'AND',
             'not' => false,
         ];
+
         return $this;
     }
 
@@ -382,6 +547,7 @@ class Builder
             'boolean' => 'AND',
             'not' => true,
         ];
+
         return $this;
     }
 
@@ -389,6 +555,7 @@ class Builder
     {
         $groups = is_array($groups[0] ?? null) ? $groups[0] : $groups;
         $this->groups = array_merge($this->groups, $groups);
+
         return $this;
     }
 
@@ -405,6 +572,7 @@ class Builder
             'operator' => $operator,
             'value' => $value,
         ];
+
         return $this;
     }
 
@@ -414,6 +582,7 @@ class Builder
             'type' => 'raw',
             'sql' => $sql,
         ];
+
         return $this;
     }
 
@@ -423,6 +592,7 @@ class Builder
             'column' => $column,
             'direction' => strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC',
         ];
+
         return $this;
     }
 
@@ -444,12 +614,14 @@ class Builder
     public function limit(int $limit): Builder
     {
         $this->limit = $limit;
+
         return $this;
     }
 
     public function offset(int $offset): Builder
     {
         $this->offset = $offset;
+
         return $this;
     }
 
@@ -462,6 +634,7 @@ class Builder
             'sql' => $subQuery['sql'],
             'bindings' => $subQuery['bindings'],
         ];
+
         return $this;
     }
 
@@ -489,12 +662,14 @@ class Builder
         $this->grammar->resetBindings();
 
         $stmt = $this->connection->prepare($sql);
+
         return $stmt->execute($bindings);
     }
 
     public function insertGetId(array $values, ?string $sequence = null): string|false
     {
         $this->insert($values);
+
         return $this->connection->lastInsertId($sequence);
     }
 
@@ -512,6 +687,7 @@ class Builder
 
         $stmt = $this->connection->prepare($sql);
         $stmt->execute($bindings);
+
         return $stmt->rowCount();
     }
 
@@ -528,6 +704,7 @@ class Builder
 
         $stmt = $this->connection->prepare($sql);
         $stmt->execute($bindings);
+
         return $stmt->rowCount();
     }
 
@@ -539,6 +716,7 @@ class Builder
 
         $sql = $this->grammar->compileTruncate($this->table);
         $this->connection->exec($sql);
+
         return true;
     }
 
@@ -605,6 +783,7 @@ class Builder
         $stmt->execute($bindings);
 
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
         return $result ?: null;
     }
 
@@ -698,6 +877,7 @@ class Builder
     public function toSql(): string
     {
         $query = $this->toSqlParts();
+
         return $this->interpolateBindings($query['sql'], $query['bindings']);
     }
 
@@ -726,6 +906,7 @@ class Builder
         }
 
         $quoted = $this->connection->quote((string) $value);
+
         if ($quoted === false) {
             return "'" . str_replace("'", "''", (string) $value) . "'";
         }

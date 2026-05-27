@@ -57,12 +57,15 @@ final class Knob
     public static function transaction(callable $callback): mixed
     {
         self::beginTransaction();
+
         try {
             $result = $callback();
             self::commit();
+
             return $result;
         } catch (\Throwable $e) {
             self::rollBack();
+
             throw $e;
         }
     }

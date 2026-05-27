@@ -18,12 +18,19 @@ Define the current baseline behavior of Knob query building and SQL compilation.
 - Group internals support mixed AND/OR logic.
 - Nested groups preserve binding order.
 
-### 3. Cross-Driver Grammar
+### 3. Common Where Predicates
+
+- LIKE predicates are supported through `whereLike`, `orWhereLike`, `whereNotLike`, and `orWhereNotLike`.
+- Column comparisons are supported through `whereColumn` and `orWhereColumn` without adding value bindings.
+- Existing `IN` and `BETWEEN` predicates include OR variants where applicable.
+- Common predicates can be used inside nested where groups.
+
+### 4. Cross-Driver Grammar
 
 - Driver-specific identifier quoting for MySQL, PostgreSQL, SQLite, SQL Server.
 - Driver-specific limit/offset compilation.
 
-### 4. Subquery Support
+### 5. Subquery Support
 
 - Subquery inputs are normalized from closures or reusable `Builder` instances where supported.
 - `selectSub` supports raw SQL strings, closures, and reusable builders.
@@ -32,7 +39,7 @@ Define the current baseline behavior of Knob query building and SQL compilation.
 - `whereSub`, `whereExists`, and `whereNotExists` accept closures or reusable builders.
 - Subquery bindings are propagated to parent query bindings in SQL placeholder order across select, from, join, where, and union components.
 
-### 5. SQL Introspection
+### 6. SQL Introspection
 
 - `Builder::toSql()` returns SQL with bindings interpolated into placeholders.
 - `Builder::toSqlParts()` returns structured query details:

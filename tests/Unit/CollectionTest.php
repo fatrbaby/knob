@@ -19,8 +19,8 @@ describe('Collection', function () {
 
     describe('ArrayAccess', function () {
         it('allows offset access', function () {
-            expect($this->collection[0]['name'])->toBe('John');
-            expect($this->collection[1]['name'])->toBe('Jane');
+            expect($this->collection[0]['name'])->toBe('John')
+                ->and($this->collection[1]['name'])->toBe('Jane');
         });
 
         it('returns null for non-existent offset', function () {
@@ -36,6 +36,7 @@ describe('Collection', function () {
     describe('IteratorAggregate', function () {
         it('iterates over items', function () {
             $names = [];
+
             foreach ($this->collection as $item) {
                 $names[] = $item['name'];
             }
@@ -54,6 +55,7 @@ describe('Collection', function () {
             $called = false;
             $mapped = $this->collection->map(function ($item) use (&$called) {
                 $called = true;
+
                 return $item['name'];
             });
             expect($called)->toBe(false);
@@ -73,8 +75,8 @@ describe('Collection', function () {
     describe('filter', function () {
         it('returns new collection with filtered items', function () {
             $filtered = $this->collection->filter(fn ($item) => $item['age'] > 25);
-            expect($filtered->count())->toBe(1);
-            expect($filtered->first()['name'])->toBe('Jane');
+            expect($filtered->count())->toBe(1)
+                ->and($filtered->first()['name'])->toBe('Jane');
         });
 
         it('returns false items as filtered out', function () {
@@ -108,8 +110,8 @@ describe('Collection', function () {
     describe('toArray', function () {
         it('returns plain array', function () {
             $array = $this->collection->toArray();
-            expect(is_array($array))->toBe(true);
-            expect(count($array))->toBe(3);
+            expect(is_array($array))->toBe(true)
+                ->and(count($array))->toBe(3);
         });
     });
 

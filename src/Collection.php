@@ -21,6 +21,7 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
     public function getIterator(): Traversable
     {
         $items = $this->items;
+
         foreach ($this->operations as $operation) {
             if ($operation['type'] === 'map') {
                 $items = array_map($operation['callback'], $items);
@@ -28,6 +29,7 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
                 $items = array_filter($items, $operation['callback']);
             }
         }
+
         return new ArrayIterator($items);
     }
 
@@ -65,6 +67,7 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
         $result = new Collection($this->items);
         $result->operations = $this->operations;
         $result->operations[] = ['type' => 'map', 'callback' => $fn];
+
         return $result;
     }
 
@@ -73,6 +76,7 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
         $result = new Collection($this->items);
         $result->operations = $this->operations;
         $result->operations[] = ['type' => 'filter', 'callback' => $fn];
+
         return $result;
     }
 
@@ -81,15 +85,18 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
         foreach ($this as $item) {
             return $item;
         }
+
         return null;
     }
 
     public function last(): mixed
     {
         $last = null;
+
         foreach ($this as $item) {
             $last = $item;
         }
+
         return $last;
     }
 
