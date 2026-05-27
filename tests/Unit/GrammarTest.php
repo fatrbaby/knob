@@ -157,8 +157,8 @@ describe('Grammar compilation', function () {
             ]],
         ]));
 
-        expect($sql)->toBe($expectedSql);
-        expect($grammar->getBindings())->toBe($expectedBindings);
+        expect($sql)->toBe($expectedSql)
+            ->and($grammar->getBindings())->toBe($expectedBindings);
     })->with([
         'mysql' => [
             new MySqlGrammar(),

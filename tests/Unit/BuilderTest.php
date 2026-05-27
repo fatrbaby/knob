@@ -265,6 +265,67 @@ describe('Builder', function () {
             expect($sql['joins'][0]['type'])->toBe('RIGHT JOIN');
         });
 
+        it('generates multi-condition callback join', function () {
+            $sql = Knob::table('users')
+                ->join('posts', fn ($join) => $join
+                    ->on('users.id', '=', 'posts.user_id')
+                    ->whereNull('posts.deleted_at'))
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('INNER JOIN "posts" ON users.id = posts.user_id AND posts.deleted_at IS NULL')
+                ->and($sql['bindings'])->toBe([]);
+        });
+
+        it('generates or join conditions', function () {
+            $sql = Knob::table('users')
+                ->join('contacts', fn ($join) => $join
+                    ->on('users.id', '=', 'contacts.user_id')
+                    ->orOn('users.email', '=', 'contacts.email'))
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('ON users.id = contacts.user_id OR users.email = contacts.email');
+        });
+
+        it('generates join value predicate bindings before where bindings', function () {
+            $sql = Knob::table('users')
+                ->leftJoin('memberships', fn ($join) => $join
+                    ->on('users.id', '=', 'memberships.user_id')
+                    ->where('memberships.active', true))
+                ->where('users.status', 'active')
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('LEFT JOIN "memberships" ON users.id = memberships.user_id AND memberships.active = ?')
+                ->and($sql['sql'])->toContain('WHERE users.status = ?')
+                ->and($sql['bindings'])->toBe([true, 'active']);
+        });
+
+        it('generates join not-null predicates', function () {
+            $sql = Knob::table('users')
+                ->join('profiles', fn ($join) => $join
+                    ->on('users.id', '=', 'profiles.user_id')
+                    ->whereNotNull('profiles.verified_at')
+                    ->orWhereNull('profiles.deleted_at'))
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('ON users.id = profiles.user_id AND profiles.verified_at IS NOT NULL OR profiles.deleted_at IS NULL');
+        });
+
+        it('generates callback joinSub with subquery and join clause bindings', function () {
+            $sql = Knob::table('users')
+                ->joinSub(
+                    fn ($q) => $q->from('posts')->select('user_id')->where('status', 'published'),
+                    'p',
+                    fn ($join) => $join
+                        ->on('users.id', '=', 'p.user_id')
+                        ->where('p.kind', 'article')
+                )
+                ->where('users.active', true)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('INNER JOIN (SELECT "user_id" FROM "posts" WHERE status = ?) AS "p" ON users.id = p.user_id AND p.kind = ?')
+                ->and($sql['bindings'])->toBe(['published', 'article', true]);
+        });
+
         it('generates cross join without on clause', function () {
             $sql = Knob::table('users')->crossJoin('posts')->toSqlParts();
             expect($sql['sql'])->toContain('CROSS JOIN "posts"')
@@ -403,8 +464,8 @@ describe('Builder', function () {
                 'age' => 19,
             ]);
 
-            expect($inserted)->toBeTrue();
-            expect(Knob::table('users')->count())->toBe(3);
+            expect($inserted)->toBeTrue()
+                ->and(Knob::table('users')->count())->toBe(3);
         });
 
         it('inserts a record and returns its id', function () {

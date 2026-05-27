@@ -150,11 +150,63 @@ abstract class Grammar
 
     protected function compileJoinClauses(array $clauses): string
     {
-        return implode(' AND ', array_map(function ($clause) {
+        $compiled = [];
+
+        foreach ($clauses as $i => $clause) {
+            $sql = $this->compileJoinClause($clause);
+
+            if ($i === 0) {
+                $compiled[] = $sql;
+                continue;
+            }
+
+            $boolean = $clause['boolean'] ?? 'AND';
+            $compiled[] = "{$boolean} {$sql}";
+        }
+
+        return implode(' ', $compiled);
+    }
+
+    protected function compileJoinClause(array $clause): string
+    {
+        if (array_is_list($clause)) {
             [$first, $operator, $second] = $clause;
 
             return "{$first} {$operator} {$second}";
-        }, $clauses));
+        }
+
+        $type = $clause['type'] ?? 'on';
+
+        return match ($type) {
+            'on' => $this->compileJoinOnClause($clause),
+            'basic' => $this->compileJoinBasicClause($clause),
+            'null' => $this->compileJoinNullClause($clause),
+            default => throw new \RuntimeException("Unknown join clause type: {$type}"),
+        };
+    }
+
+    protected function compileJoinOnClause(array $clause): string
+    {
+        ['first' => $first, 'operator' => $operator, 'second' => $second] = $clause;
+
+        return "{$first} {$operator} {$second}";
+    }
+
+    protected function compileJoinBasicClause(array $clause): string
+    {
+        ['column' => $column, 'operator' => $operator, 'value' => $value] = $clause;
+
+        $this->addBinding($value, 'join');
+
+        return "{$column} {$operator} ?";
+    }
+
+    protected function compileJoinNullClause(array $clause): string
+    {
+        $column = $clause['column'];
+        $not = $clause['not'] ?? false;
+
+        return $column . ($not ? ' IS NOT NULL' : ' IS NULL');
     }
 
     protected function compileWheres(array $wheres): string

@@ -9,6 +9,7 @@ Define the current baseline behavior of Knob query building and SQL compilation.
 ### 1. Fluent Query Building
 
 - Build SELECT queries with `select`, `from`, joins, where clauses, groups, havings, order, limit/offset, and unions.
+- Joins support simple column comparisons and callback-based multi-condition clauses.
 - Execute read queries via `get`, `first`, `pluck`, `exists`.
 - Execute write queries via `insert`, `insertGetId`, `update`, `delete`, `truncate`.
 
@@ -29,6 +30,7 @@ Define the current baseline behavior of Knob query building and SQL compilation.
 
 - Driver-specific identifier quoting for MySQL, PostgreSQL, SQLite, SQL Server.
 - Driver-specific limit/offset compilation.
+- Join clause bindings are compiled before outer where bindings.
 
 ### 5. Subquery Support
 

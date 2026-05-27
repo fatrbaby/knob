@@ -21,8 +21,7 @@ describe('Knob facade', function () {
             Knob::table('users')->insert(['name' => 'Alice']);
 
             throw new RuntimeException('rollback');
-        }))->toThrow(RuntimeException::class, 'rollback');
-
-        expect(Knob::table('users')->count())->toBe(0);
+        }))->toThrow(RuntimeException::class, 'rollback')
+            ->and(Knob::table('users')->count())->toBe(0);
     });
 });

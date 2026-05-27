@@ -47,8 +47,8 @@ describe('Collection', function () {
     describe('map', function () {
         it('returns new collection with mapped items', function () {
             $mapped = $this->collection->map(fn ($item) => $item['name']);
-            expect($mapped)->toBeInstanceOf(Collection::class);
-            expect($mapped->toArray())->toBe(['John', 'Jane', 'Bob']);
+            expect($mapped)->toBeInstanceOf(Collection::class)
+                ->and($mapped->toArray())->toBe(['John', 'Jane', 'Bob']);
         });
 
         it('does not execute until iteration', function () {

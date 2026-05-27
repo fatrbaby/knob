@@ -93,17 +93,17 @@ class Builder
         return $this;
     }
 
-    public function join(string $table, string $first, string $operator, string $second, ?string $alias = null): Builder
+    public function join(string $table, string|Closure $first, ?string $operator = null, ?string $second = null, ?string $alias = null): Builder
     {
         return $this->joinInternal($table, $first, $operator, $second, 'INNER JOIN', $alias);
     }
 
-    public function leftJoin(string $table, string $first, string $operator, string $second, ?string $alias = null): Builder
+    public function leftJoin(string $table, string|Closure $first, ?string $operator = null, ?string $second = null, ?string $alias = null): Builder
     {
         return $this->joinInternal($table, $first, $operator, $second, 'LEFT JOIN', $alias);
     }
 
-    public function rightJoin(string $table, string $first, string $operator, string $second, ?string $alias = null): Builder
+    public function rightJoin(string $table, string|Closure $first, ?string $operator = null, ?string $second = null, ?string $alias = null): Builder
     {
         return $this->joinInternal($table, $first, $operator, $second, 'RIGHT JOIN', $alias);
     }
@@ -113,19 +113,45 @@ class Builder
         return $this->joinInternal($table, '', '', '', 'CROSS JOIN', $alias);
     }
 
-    private function joinInternal(string $table, string $first, string $operator, string $second, string $type, ?string $alias = null): Builder
+    private function joinInternal(string $table, string|Closure $first, ?string $operator, ?string $second, string $type, ?string $alias = null): Builder
     {
         $this->joins[] = [
             'type' => $type,
             'table' => $table,
             'alias' => $alias,
-            'clauses' => $first ? [[$first, $operator, $second]] : [],
+            'clauses' => $this->normalizeJoinClauses($first, $operator, $second),
         ];
 
         return $this;
     }
 
-    public function joinSub(Closure|Builder $callback, string $as, string $first, string $operator, string $second): Builder
+    private function normalizeJoinClauses(string|Closure $first, ?string $operator, ?string $second): array
+    {
+        if ($first instanceof Closure) {
+            $join = new JoinClause();
+            $first($join);
+
+            return $join->getClauses();
+        }
+
+        if ($first === '') {
+            return [];
+        }
+
+        if ($operator === null || $second === null) {
+            throw new \RuntimeException('Join operator and second column are required for simple joins');
+        }
+
+        return [[
+            'type' => 'on',
+            'first' => $first,
+            'operator' => $operator,
+            'second' => $second,
+            'boolean' => 'AND',
+        ]];
+    }
+
+    public function joinSub(Closure|Builder $callback, string $as, string|Closure $first, ?string $operator = null, ?string $second = null): Builder
     {
         $subQuery = $this->normalizeSubquery($callback);
         $sql = $subQuery['sql'];
@@ -133,7 +159,7 @@ class Builder
         $this->joins[] = [
             'type' => 'INNER JOIN',
             'table' => "({$sql}) AS {$this->grammar->quoteIdentifier($as)}",
-            'clauses' => $first ? [[$first, $operator, $second]] : [],
+            'clauses' => $this->normalizeJoinClauses($first, $operator, $second),
             'bindings' => $subQuery['bindings'],
         ];
 
