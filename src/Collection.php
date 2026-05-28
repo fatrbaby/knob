@@ -3,7 +3,6 @@
 namespace Knob;
 
 use ArrayAccess;
-use ArrayIterator;
 use Countable;
 use IteratorAggregate;
 use Traversable;
@@ -20,32 +19,56 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
 
     public function getIterator(): Traversable
     {
-        $items = $this->items;
-
-        foreach ($this->operations as $operation) {
-            if ($operation['type'] === 'map') {
-                $items = array_map($operation['callback'], $items);
-            } elseif ($operation['type'] === 'filter') {
-                $items = array_filter($items, $operation['callback']);
-            }
-        }
-
-        return new ArrayIterator($items);
+        return $this->iterateItems();
     }
 
     public function count(): int
     {
-        return count(iterator_to_array($this->getIterator()));
+        if ($this->operations === []) {
+            return count($this->items);
+        }
+
+        $count = 0;
+
+        foreach ($this->iterateItems() as $_) {
+            $count++;
+        }
+
+        return $count;
     }
 
     public function offsetExists(mixed $offset): bool
     {
-        return isset($this->items[$offset]);
+        if ($this->operations === []) {
+            return isset($this->items[$offset]);
+        }
+
+        $offset = $this->normalizeOffset($offset);
+
+        foreach ($this->iterateItems() as $key => $item) {
+            if ($key === $offset) {
+                return $item !== null;
+            }
+        }
+
+        return false;
     }
 
     public function offsetGet(mixed $offset): mixed
     {
-        return $this->items[$offset] ?? null;
+        if ($this->operations === []) {
+            return $this->items[$offset] ?? null;
+        }
+
+        $offset = $this->normalizeOffset($offset);
+
+        foreach ($this->iterateItems() as $key => $item) {
+            if ($key === $offset) {
+                return $item;
+            }
+        }
+
+        return null;
     }
 
     public function offsetSet(mixed $offset, mixed $value): void
@@ -108,5 +131,25 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
     public function toJson(int $jsonFlag = 0): string
     {
         return json_encode($this->toArray(), $jsonFlag);
+    }
+
+    private function iterateItems(): Traversable
+    {
+        foreach ($this->items as $key => $item) {
+            foreach ($this->operations as $operation) {
+                if ($operation['type'] === 'map') {
+                    $item = $operation['callback']($item);
+                } elseif (! $operation['callback']($item)) {
+                    continue 2;
+                }
+            }
+
+            yield $key => $item;
+        }
+    }
+
+    private function normalizeOffset(mixed $offset): int|string
+    {
+        return array_key_first([$offset => null]);
     }
 }

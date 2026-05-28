@@ -31,6 +31,29 @@ describe('Collection', function () {
             $this->collection[3] = ['name' => 'Alice', 'age' => 35];
             expect($this->collection[3]['name'])->toBe('Alice');
         });
+
+        it('reads offsets from mapped items', function () {
+            $mapped = $this->collection->map(fn ($item) => $item['name']);
+
+            expect($mapped[0])->toBe('John')
+                ->and($mapped[1])->toBe('Jane');
+        });
+
+        it('checks offset existence from filtered items', function () {
+            $filtered = $this->collection->filter(fn ($item) => $item['age'] > 25);
+
+            expect(isset($filtered[0]))->toBeFalse()
+                ->and(isset($filtered[1]))->toBeTrue()
+                ->and($filtered[0])->toBeNull()
+                ->and($filtered[1]['name'])->toBe('Jane');
+        });
+
+        it('follows isset semantics for null mapped values', function () {
+            $mapped = $this->collection->map(fn () => null);
+
+            expect(isset($mapped[0]))->toBeFalse()
+                ->and($mapped[0])->toBeNull();
+        });
     });
 
     describe('IteratorAggregate', function () {
@@ -58,9 +81,9 @@ describe('Collection', function () {
 
                 return $item['name'];
             });
-            expect($called)->toBe(false);
+            expect($called)->toBeFalse();
             $mapped->toArray();
-            expect($called)->toBe(true);
+            expect($called)->toBeTrue();
         });
 
         it('chains with filter', function () {
@@ -90,6 +113,26 @@ describe('Collection', function () {
             expect($this->collection->first()['name'])->toBe('John');
         });
 
+        it('stops evaluating after the first matching item', function () {
+            $calls = 0;
+
+            $first = $this->collection
+                ->filter(function ($item) use (&$calls) {
+                    $calls++;
+
+                    return $item['age'] > 20;
+                })
+                ->map(function ($item) use (&$calls) {
+                    $calls++;
+
+                    return $item['name'];
+                })
+                ->first();
+
+            expect($first)->toBe('John')
+                ->and($calls)->toBe(2);
+        });
+
         it('returns null for empty collection', function () {
             $empty = new Collection([]);
             expect($empty->first())->toBeNull();
@@ -110,7 +153,7 @@ describe('Collection', function () {
     describe('toArray', function () {
         it('returns plain array', function () {
             $array = $this->collection->toArray();
-            expect(is_array($array))->toBe(true)
+            expect(is_array($array))->toBeTrue()
                 ->and(count($array))->toBe(3);
         });
     });
@@ -118,7 +161,7 @@ describe('Collection', function () {
     describe('toJson', function () {
         it('returns JSON string', function () {
             $json = $this->collection->toJson();
-            expect(is_string($json))->toBe(true);
+            expect(is_string($json))->toBeTrue();
             $decoded = json_decode($json, true);
             expect(count($decoded))->toBe(3);
         });
