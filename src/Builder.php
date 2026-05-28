@@ -527,6 +527,16 @@ class Builder
         return $this;
     }
 
+    public function whereNot(Closure $callback): Builder
+    {
+        return $this->addWhereNotClause($callback, 'AND');
+    }
+
+    public function orWhereNot(Closure $callback): Builder
+    {
+        return $this->addWhereNotClause($callback, 'OR');
+    }
+
     public function whereExists(Closure|Builder $callback): Builder
     {
         $this->wheres[] = [
@@ -551,10 +561,61 @@ class Builder
         return $this;
     }
 
+    public function whereDate(string $column, mixed $operator, mixed $value = null): Builder
+    {
+        return $this->addDateWhereClause('date', $column, $operator, $value, 'AND', func_num_args());
+    }
+
+    public function orWhereDate(string $column, mixed $operator, mixed $value = null): Builder
+    {
+        return $this->addDateWhereClause('date', $column, $operator, $value, 'OR', func_num_args());
+    }
+
+    public function whereTime(string $column, mixed $operator, mixed $value = null): Builder
+    {
+        return $this->addDateWhereClause('time', $column, $operator, $value, 'AND', func_num_args());
+    }
+
+    public function orWhereTime(string $column, mixed $operator, mixed $value = null): Builder
+    {
+        return $this->addDateWhereClause('time', $column, $operator, $value, 'OR', func_num_args());
+    }
+
+    public function whereYear(string $column, mixed $operator, mixed $value = null): Builder
+    {
+        return $this->addDateWhereClause('year', $column, $operator, $value, 'AND', func_num_args());
+    }
+
+    public function orWhereYear(string $column, mixed $operator, mixed $value = null): Builder
+    {
+        return $this->addDateWhereClause('year', $column, $operator, $value, 'OR', func_num_args());
+    }
+
+    public function whereMonth(string $column, mixed $operator, mixed $value = null): Builder
+    {
+        return $this->addDateWhereClause('month', $column, $operator, $value, 'AND', func_num_args());
+    }
+
+    public function orWhereMonth(string $column, mixed $operator, mixed $value = null): Builder
+    {
+        return $this->addDateWhereClause('month', $column, $operator, $value, 'OR', func_num_args());
+    }
+
     public function groupBy(string|array ...$groups): Builder
     {
         $groups = is_array($groups[0] ?? null) ? $groups[0] : $groups;
         $this->groups = array_merge($this->groups, $groups);
+
+        return $this;
+    }
+
+    public function groupByRaw(string $sql, array $bindings = []): Builder
+    {
+        $this->groups[] = [
+            'type' => 'raw',
+            'sql' => $sql,
+            'bindings' => $bindings,
+        ];
 
         return $this;
     }
@@ -576,11 +637,12 @@ class Builder
         return $this;
     }
 
-    public function havingRaw(string $sql): Builder
+    public function havingRaw(string $sql, array $bindings = []): Builder
     {
         $this->havings[] = [
             'type' => 'raw',
             'sql' => $sql,
+            'bindings' => $bindings,
         ];
 
         return $this;
@@ -591,6 +653,17 @@ class Builder
         $this->orders[] = [
             'column' => $column,
             'direction' => strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC',
+        ];
+
+        return $this;
+    }
+
+    public function orderByRaw(string $sql, array $bindings = []): Builder
+    {
+        $this->orders[] = [
+            'type' => 'raw',
+            'sql' => $sql,
+            'bindings' => $bindings,
         ];
 
         return $this;
@@ -649,28 +722,7 @@ class Builder
             throw new \RuntimeException('Table not set for insert');
         }
 
-        if ($values === []) {
-            throw new \RuntimeException('Insert values cannot be empty');
-        }
-
-        $rows = is_array($values[0] ?? null) ? array_values($values) : [$values];
-        $columns = array_keys($rows[0]);
-
-        if ($columns === []) {
-            throw new \RuntimeException('Insert values cannot be empty');
-        }
-
-        foreach ($rows as $row) {
-            if (array_diff($columns, array_keys($row)) !== [] || array_diff(array_keys($row), $columns) !== []) {
-                throw new \RuntimeException('Insert rows must have the same columns');
-            }
-        }
-
-        $components = [
-            'table' => $this->table,
-            'columns' => $columns,
-            'values' => array_map(fn ($row) => array_map(fn ($column) => $row[$column], $columns), $rows),
-        ];
+        $components = $this->prepareInsertComponents($values);
 
         $sql = $this->grammar->compileInsert($components);
         $bindings = $this->grammar->getBindings();
@@ -679,6 +731,24 @@ class Builder
         $stmt = $this->connection->prepare($sql);
 
         return $stmt->execute($bindings);
+    }
+
+    public function insertOrIgnore(array $values): int
+    {
+        if (empty($this->table)) {
+            throw new \RuntimeException('Table not set for insert');
+        }
+
+        $components = $this->prepareInsertComponents($values);
+
+        $sql = $this->grammar->compileInsertOrIgnore($components);
+        $bindings = $this->grammar->getBindings();
+        $this->grammar->resetBindings();
+
+        $stmt = $this->connection->prepare($sql);
+        $stmt->execute($bindings);
+
+        return $stmt->rowCount();
     }
 
     public function insertGetId(array $values, ?string $sequence = null): string|false
@@ -702,6 +772,34 @@ class Builder
 
         $sql = $this->grammar->compileUpdate($components);
         $bindings = $this->grammar->getUpdateBindings();
+        $this->grammar->resetBindings();
+
+        $stmt = $this->connection->prepare($sql);
+        $stmt->execute($bindings);
+
+        return $stmt->rowCount();
+    }
+
+    public function upsert(array $values, string|array $uniqueBy, ?array $update = null): int
+    {
+        if (empty($this->table)) {
+            throw new \RuntimeException('Table not set for insert');
+        }
+
+        $components = $this->prepareInsertComponents($values);
+        $uniqueBy = is_array($uniqueBy) ? array_values($uniqueBy) : [$uniqueBy];
+
+        if ($uniqueBy === []) {
+            throw new \RuntimeException('Upsert unique columns cannot be empty');
+        }
+
+        $components['uniqueBy'] = $uniqueBy;
+        $components['update'] = $update === null
+            ? array_values(array_diff($components['columns'], $uniqueBy))
+            : array_values($update);
+
+        $sql = $this->grammar->compileUpsert($components);
+        $bindings = $this->grammar->getBindings();
         $this->grammar->resetBindings();
 
         $stmt = $this->connection->prepare($sql);
@@ -793,6 +891,48 @@ class Builder
         $stmt->execute($bindings);
 
         return new Collection($stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    public function cursor(): \Generator
+    {
+        $sql = $this->grammar->compileSelect($this->getComponents());
+        $bindings = $this->grammar->getBindings();
+        $this->grammar->resetBindings();
+
+        $stmt = $this->connection->prepare($sql);
+        $stmt->execute($bindings);
+
+        while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            yield $row;
+        }
+    }
+
+    public function chunk(int $count, callable $callback): bool
+    {
+        if ($count < 1) {
+            throw new \RuntimeException('Chunk size must be at least 1');
+        }
+
+        $page = 0;
+
+        do {
+            $items = $this->clone()
+                ->limit($count)
+                ->offset($page * $count)
+                ->get();
+
+            if ($items->count() === 0) {
+                return true;
+            }
+
+            if ($callback($items, $page + 1) === false) {
+                return false;
+            }
+
+            $page++;
+        } while ($items->count() === $count);
+
+        return true;
     }
 
     public function first(): ?array
@@ -987,6 +1127,64 @@ class Builder
         ];
 
         return $this;
+    }
+
+    private function addWhereNotClause(Closure $callback, string $boolean): Builder
+    {
+        $subBuilder = new self($this->connection);
+        $callback($subBuilder);
+
+        $this->wheres[] = [
+            'type' => 'not',
+            'wheres' => $subBuilder->wheres,
+            'boolean' => $boolean,
+        ];
+
+        return $this;
+    }
+
+    private function addDateWhereClause(string $type, string $column, mixed $operator, mixed $value, string $boolean, int $argumentCount): Builder
+    {
+        if ($argumentCount === 2) {
+            $value = $operator;
+            $operator = '=';
+        }
+
+        $this->wheres[] = [
+            'type' => $type,
+            'column' => $column,
+            'operator' => $operator,
+            'value' => $value,
+            'boolean' => $boolean,
+        ];
+
+        return $this;
+    }
+
+    private function prepareInsertComponents(array $values): array
+    {
+        if ($values === []) {
+            throw new \RuntimeException('Insert values cannot be empty');
+        }
+
+        $rows = is_array($values[0] ?? null) ? array_values($values) : [$values];
+        $columns = array_keys($rows[0]);
+
+        if ($columns === []) {
+            throw new \RuntimeException('Insert values cannot be empty');
+        }
+
+        foreach ($rows as $row) {
+            if (array_diff($columns, array_keys($row)) !== [] || array_diff(array_keys($row), $columns) !== []) {
+                throw new \RuntimeException('Insert rows must have the same columns');
+            }
+        }
+
+        return [
+            'table' => $this->table,
+            'columns' => $columns,
+            'values' => array_map(fn ($row) => array_map(fn ($column) => $row[$column], $columns), $rows),
+        ];
     }
 
     public function clone(): self

@@ -55,6 +55,10 @@ abstract class Grammar
         }
 
         if (($components['limit'] ?? null) !== null || ($components['offset'] ?? null) !== null) {
+            if (empty($components['orders']) && $this->requiresOrderForLimitOffset()) {
+                $sql[] = $this->compileDefaultOrderForLimitOffset();
+            }
+
             $sql[] = $this->compileLimitOffset($components['limit'] ?? null, $components['offset'] ?? null);
         }
 
@@ -246,6 +250,8 @@ abstract class Grammar
             'sub' => $this->compileWhereSub($where),
             'exists' => $this->compileWhereExists($where),
             'group' => $this->compileWhereGroup($where),
+            'not' => $this->compileWhereNot($where),
+            'date', 'time', 'year', 'month' => $this->compileWhereDateBased($where),
             'raw' => $this->compileWhereRaw($where),
             default => throw new \RuntimeException("Unknown where type: {$type}"),
         };
@@ -397,6 +403,22 @@ abstract class Grammar
         return '(' . implode(' ', $parts) . ')';
     }
 
+    protected function compileWhereNot(array $where): string
+    {
+        $group = $this->compileWhereGroup($where);
+
+        return $group === '' ? '' : "NOT {$group}";
+    }
+
+    protected function compileWhereDateBased(array $where): string
+    {
+        ['type' => $type, 'column' => $column, 'operator' => $operator, 'value' => $value] = $where;
+
+        $this->addBinding($value, 'where');
+
+        return $this->compileDateExpression($type, $column) . " {$operator} ?";
+    }
+
     protected function compileWhereRaw(array $where): string
     {
         $sql = $where['sql'];
@@ -428,10 +450,17 @@ abstract class Grammar
 
     protected function compileGroups(array $groups): string
     {
-        return implode(', ', array_map(
-            fn ($group) => $this->isQualified($group) ? $group : $this->quoteIdentifier($group),
-            $groups
-        ));
+        return implode(', ', array_map(function ($group) {
+            if (is_array($group)) {
+                foreach ($group['bindings'] ?? [] as $binding) {
+                    $this->addBinding($binding, 'groupBy');
+                }
+
+                return $group['sql'];
+            }
+
+            return $this->isQualified($group) ? $group : $this->quoteIdentifier($group);
+        }, $groups));
     }
 
     protected function compileHavings(array $havings): string
@@ -451,7 +480,7 @@ abstract class Grammar
 
         return match ($type) {
             'basic' => $this->compileHavingBasic($having),
-            'raw' => $having['sql'],
+            'raw' => $this->compileHavingRaw($having),
             default => throw new \RuntimeException("Unknown having type: {$type}"),
         };
     }
@@ -465,12 +494,49 @@ abstract class Grammar
         return "{$column} {$operator} ?";
     }
 
+    protected function compileHavingRaw(array $having): string
+    {
+        foreach ($having['bindings'] ?? [] as $binding) {
+            $this->addBinding($binding, 'having');
+        }
+
+        return $having['sql'];
+    }
+
     protected function compileOrders(array $orders): string
     {
-        return 'ORDER BY ' . implode(', ', array_map(
-            fn ($order) => $order['column'] . ' ' . $order['direction'],
-            $orders
-        ));
+        return 'ORDER BY ' . implode(', ', array_map(function ($order) {
+            if (($order['type'] ?? null) === 'raw') {
+                foreach ($order['bindings'] ?? [] as $binding) {
+                    $this->addBinding($binding, 'order');
+                }
+
+                return $order['sql'];
+            }
+
+            return $order['column'] . ' ' . $order['direction'];
+        }, $orders));
+    }
+
+    protected function compileDateExpression(string $type, string $column): string
+    {
+        return match ($type) {
+            'date' => "DATE({$column})",
+            'time' => "TIME({$column})",
+            'year' => "EXTRACT(YEAR FROM {$column})",
+            'month' => "EXTRACT(MONTH FROM {$column})",
+            default => throw new \RuntimeException("Unknown date where type: {$type}"),
+        };
+    }
+
+    protected function requiresOrderForLimitOffset(): bool
+    {
+        return false;
+    }
+
+    protected function compileDefaultOrderForLimitOffset(): string
+    {
+        return '';
     }
 
     abstract protected function compileLimit(int $limit): string;
@@ -511,6 +577,30 @@ abstract class Grammar
         $this->addBinding(array_merge(...$components['values']), 'insert');
 
         return "INSERT INTO {$table} ({$columns}) VALUES {$placeholders}";
+    }
+
+    public function compileInsertOrIgnore(array $components): string
+    {
+        return $this->compileInsert($components) . ' ON CONFLICT DO NOTHING';
+    }
+
+    public function compileUpsert(array $components): string
+    {
+        if (empty($components['update'])) {
+            return $this->compileInsertOrIgnore($components);
+        }
+
+        $sql = $this->compileInsert($components);
+        $uniqueBy = implode(', ', array_map(
+            fn ($column) => $this->quoteIdentifier($column),
+            $components['uniqueBy']
+        ));
+        $updates = implode(', ', array_map(
+            fn ($column) => $this->quoteIdentifier($column) . ' = excluded.' . $this->quoteIdentifier($column),
+            $components['update']
+        ));
+
+        return "{$sql} ON CONFLICT ({$uniqueBy}) DO UPDATE SET {$updates}";
     }
 
     protected function compileInsertPlaceholders(array $values): string

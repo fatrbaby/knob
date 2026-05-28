@@ -79,6 +79,31 @@ describe('Builder', function () {
             expect($sql['sql'])->toContain('status IS NULL OR email IS NOT NULL')
                 ->and($sql['bindings'])->toBe([]);
         });
+
+        it('generates negated where groups', function () {
+            $sql = Knob::table('users')
+                ->whereNot(fn ($q) => $q->where('status', 'inactive')->orWhere('age', '<', 18))
+                ->orWhereNot(fn ($q) => $q->whereNull('email'))
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('WHERE NOT (status = ? OR age < ?) OR NOT (email IS NULL)')
+                ->and($sql['bindings'])->toBe(['inactive', 18]);
+        });
+
+        it('generates date based where predicates', function () {
+            $sql = Knob::table('users')
+                ->whereDate('created_at', '2026-05-28')
+                ->orWhereTime('created_at', '>=', '09:00:00')
+                ->whereYear('created_at', 2026)
+                ->whereMonth('created_at', 5)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('DATE(created_at) = ?')
+                ->and($sql['sql'])->toContain('TIME(created_at) >= ?')
+                ->and($sql['sql'])->toContain("CAST(STRFTIME('%Y', created_at) AS INTEGER) = ?")
+                ->and($sql['sql'])->toContain("CAST(STRFTIME('%m', created_at) AS INTEGER) = ?")
+                ->and($sql['bindings'])->toBe(['2026-05-28', '09:00:00', 2026, 5]);
+        });
     });
 
     describe('whereGroup', function () {
@@ -412,6 +437,21 @@ describe('Builder', function () {
                 ->and($sql['sql'])->toContain('HAVING count > ? AND SUM(score) > 10')
                 ->and($sql['bindings'])->toBe([1]);
         });
+
+        it('supports raw group order and having bindings', function () {
+            $sql = Knob::table('posts')
+                ->selectRaw('COUNT(*)')
+                ->where('status', 'published')
+                ->groupByRaw('DATE(created_at) > ?', ['2026-01-01'])
+                ->havingRaw('COUNT(*) > ?', [2])
+                ->orderByRaw('MAX(score) > ?', [10])
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('GROUP BY DATE(created_at) > ?')
+                ->and($sql['sql'])->toContain('HAVING COUNT(*) > ?')
+                ->and($sql['sql'])->toContain('ORDER BY MAX(score) > ?')
+                ->and($sql['bindings'])->toBe(['published', '2026-01-01', 2, 10]);
+        });
     });
 
     describe('execution', function () {
@@ -419,6 +459,43 @@ describe('Builder', function () {
             $results = Knob::table('users')->get();
             expect($results)->toBeInstanceOf(\Knob\Collection::class)
                 ->and($results->count())->toBe(2);
+        });
+
+        it('streams results with cursor', function () {
+            $names = [];
+
+            foreach (Knob::table('users')->orderBy('id')->cursor() as $row) {
+                $names[] = $row['name'];
+            }
+
+            expect($names)->toBe(['John', 'Jane']);
+        });
+
+        it('processes results in chunks', function () {
+            $pages = [];
+            $names = [];
+
+            $completed = Knob::table('users')->orderBy('id')->chunk(1, function ($items, $page) use (&$pages, &$names) {
+                $pages[] = $page;
+                $names[] = $items->first()['name'];
+            });
+
+            expect($completed)->toBeTrue()
+                ->and($pages)->toBe([1, 2])
+                ->and($names)->toBe(['John', 'Jane']);
+        });
+
+        it('can stop chunk processing early', function () {
+            $pages = 0;
+
+            $completed = Knob::table('users')->orderBy('id')->chunk(1, function () use (&$pages) {
+                $pages++;
+
+                return false;
+            });
+
+            expect($completed)->toBeFalse()
+                ->and($pages)->toBe(1);
         });
 
         it('gets first result', function () {
@@ -488,6 +565,42 @@ describe('Builder', function () {
 
             expect($inserted)->toBeTrue()
                 ->and(Knob::table('users')->count())->toBe(3);
+        });
+
+        it('inserts or ignores duplicate records', function () {
+            $ignored = Knob::table('users')->insertOrIgnore([
+                'id' => 1,
+                'name' => 'Ignored',
+                'email' => 'ignored@example.com',
+                'status' => 'pending',
+                'age' => 40,
+            ]);
+
+            expect($ignored)->toBe(0)
+                ->and(Knob::table('users')->where('id', 1)->first()['name'])->toBe('John');
+        });
+
+        it('upserts records', function () {
+            Knob::table('users')->upsert([
+                [
+                    'id' => 1,
+                    'name' => 'Updated John',
+                    'email' => 'john@example.com',
+                    'status' => 'active',
+                    'age' => 26,
+                ],
+                [
+                    'id' => 3,
+                    'name' => 'Alice',
+                    'email' => 'alice@example.com',
+                    'status' => 'pending',
+                    'age' => 35,
+                ],
+            ], 'id', ['name', 'age']);
+
+            expect(Knob::table('users')->where('id', 1)->first()['name'])->toBe('Updated John')
+                ->and(Knob::table('users')->where('id', 1)->first()['age'])->toBe(26)
+                ->and(Knob::table('users')->where('id', 3)->first()['name'])->toBe('Alice');
         });
 
         it('inserts a record and returns its id', function () {

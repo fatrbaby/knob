@@ -18,4 +18,15 @@ class SqliteGrammar extends Grammar
     {
         return "OFFSET {$offset}";
     }
+
+    protected function compileDateExpression(string $type, string $column): string
+    {
+        return match ($type) {
+            'date' => "DATE({$column})",
+            'time' => "TIME({$column})",
+            'year' => "CAST(STRFTIME('%Y', {$column}) AS INTEGER)",
+            'month' => "CAST(STRFTIME('%m', {$column}) AS INTEGER)",
+            default => parent::compileDateExpression($type, $column),
+        };
+    }
 }

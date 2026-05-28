@@ -51,6 +51,39 @@ describe('Grammar compilation', function () {
         'sqlserver' => [new SqlServerGrammar(), 'SELECT 1 FROM [users]'],
     ]);
 
+    it('compiles insert or ignore for supported databases', function (Grammar $grammar, string $expectedSql) {
+        $sql = $grammar->compileInsertOrIgnore([
+            'table' => 'users',
+            'columns' => ['id', 'name'],
+            'values' => [[1, 'John']],
+        ]);
+
+        expect($sql)->toBe($expectedSql)
+            ->and($grammar->getBindings())->toBe([1, 'John']);
+    })->with([
+        'mysql' => [new MySqlGrammar(), 'INSERT IGNORE INTO `users` (`id`, `name`) VALUES (?, ?)'],
+        'postgres' => [new PostgresGrammar(), 'INSERT INTO "users" ("id", "name") VALUES (?, ?) ON CONFLICT DO NOTHING'],
+        'sqlite' => [new SqliteGrammar(), 'INSERT INTO "users" ("id", "name") VALUES (?, ?) ON CONFLICT DO NOTHING'],
+    ]);
+
+    it('compiles upsert for each supported database', function (Grammar $grammar, string $expectedSql) {
+        $sql = $grammar->compileUpsert([
+            'table' => 'users',
+            'columns' => ['id', 'name', 'email'],
+            'values' => [[1, 'John', 'john@example.com']],
+            'uniqueBy' => ['id'],
+            'update' => ['name', 'email'],
+        ]);
+
+        expect($sql)->toBe($expectedSql)
+            ->and($grammar->getBindings())->toBe([1, 'John', 'john@example.com']);
+    })->with([
+        'mysql' => [new MySqlGrammar(), 'INSERT INTO `users` (`id`, `name`, `email`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`)'],
+        'postgres' => [new PostgresGrammar(), 'INSERT INTO "users" ("id", "name", "email") VALUES (?, ?, ?) ON CONFLICT ("id") DO UPDATE SET "name" = excluded."name", "email" = excluded."email"'],
+        'sqlite' => [new SqliteGrammar(), 'INSERT INTO "users" ("id", "name", "email") VALUES (?, ?, ?) ON CONFLICT ("id") DO UPDATE SET "name" = excluded."name", "email" = excluded."email"'],
+        'sqlserver' => [new SqlServerGrammar(), 'MERGE INTO [users] AS target USING (VALUES (?, ?, ?)) AS source ([id], [name], [email]) ON target.[id] = source.[id] WHEN MATCHED THEN UPDATE SET target.[name] = source.[name], target.[email] = source.[email] WHEN NOT MATCHED THEN INSERT ([id], [name], [email]) VALUES (source.[id], source.[name], source.[email]);'],
+    ]);
+
     it('compiles join table aliases for each supported database', function (Grammar $grammar, string $expectedSql) {
         $sql = $grammar->compileSelect(selectComponents([
             'from' => ['users', 'u', []],
@@ -84,6 +117,15 @@ describe('Grammar compilation', function () {
         'sqlite' => [new SqliteGrammar(), 'SELECT "id", "name" FROM "users" ORDER BY id ASC LIMIT 10 OFFSET 20'],
         'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] ORDER BY id ASC OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY'],
     ]);
+
+    it('adds a default order for SQL Server limit without explicit order', function () {
+        $sql = (new SqlServerGrammar())->compileSelect(selectComponents([
+            'columns' => [1],
+            'limit' => 1,
+        ]));
+
+        expect($sql)->toBe('SELECT 1 FROM [users] ORDER BY (SELECT 0) OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY');
+    });
 
     it('compiles complex subquery components and bindings for each supported database', function (Grammar $grammar, string $expectedSql, array $expectedBindings) {
         $sql = $grammar->compileSelect(selectComponents([
