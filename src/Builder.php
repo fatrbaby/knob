@@ -193,20 +193,7 @@ class Builder
             return $this;
         }
 
-        if ($value === null) {
-            $value = $operator;
-            $operator = '=';
-        }
-
-        $this->wheres[] = [
-            'type' => 'basic',
-            'column' => $column,
-            'operator' => $operator,
-            'value' => $value,
-            'boolean' => 'AND',
-        ];
-
-        return $this;
+        return $this->addWhereClause($column, $operator, $value, 'AND', func_num_args());
     }
 
     public function orWhere(string|Closure $column, mixed $operator = null, mixed $value = null): Builder
@@ -224,20 +211,7 @@ class Builder
             return $this;
         }
 
-        if ($value === null) {
-            $value = $operator;
-            $operator = '=';
-        }
-
-        $this->wheres[] = [
-            'type' => 'basic',
-            'column' => $column,
-            'operator' => $operator,
-            'value' => $value,
-            'boolean' => 'OR',
-        ];
-
-        return $this;
+        return $this->addWhereClause($column, $operator, $value, 'OR', func_num_args());
     }
 
     public function whereIn(string $column, array|Closure|Builder $values): Builder
@@ -675,12 +649,27 @@ class Builder
             throw new \RuntimeException('Table not set for insert');
         }
 
+        if ($values === []) {
+            throw new \RuntimeException('Insert values cannot be empty');
+        }
+
         $rows = is_array($values[0] ?? null) ? array_values($values) : [$values];
         $columns = array_keys($rows[0]);
+
+        if ($columns === []) {
+            throw new \RuntimeException('Insert values cannot be empty');
+        }
+
+        foreach ($rows as $row) {
+            if (array_diff($columns, array_keys($row)) !== [] || array_diff(array_keys($row), $columns) !== []) {
+                throw new \RuntimeException('Insert rows must have the same columns');
+            }
+        }
+
         $components = [
             'table' => $this->table,
             'columns' => $columns,
-            'values' => array_map(fn ($row) => array_values($row), $rows),
+            'values' => array_map(fn ($row) => array_map(fn ($column) => $row[$column], $columns), $rows),
         ];
 
         $sql = $this->grammar->compileInsert($components);
@@ -701,6 +690,10 @@ class Builder
 
     public function update(array $values): int
     {
+        if (empty($this->table)) {
+            throw new \RuntimeException('Table not set for update');
+        }
+
         $components = [
             'table' => $this->table,
             'values' => $values,
@@ -719,6 +712,10 @@ class Builder
 
     public function delete(): int
     {
+        if (empty($this->table)) {
+            throw new \RuntimeException('Table not set for delete');
+        }
+
         $components = [
             'table' => $this->table,
             'wheres' => $this->wheres,
@@ -773,11 +770,12 @@ class Builder
 
     private function aggregate(string $function, string $column): mixed
     {
-        $this->columns = ["{$function}({$column})"];
+        $builder = $this->clone();
+        $builder->columns = ["{$function}({$column})"];
 
-        $sql = $this->grammar->compileSelect($this->getComponents());
-        $bindings = $this->grammar->getBindings();
-        $this->grammar->resetBindings();
+        $sql = $builder->grammar->compileSelect($builder->getComponents());
+        $bindings = $builder->grammar->getBindings();
+        $builder->grammar->resetBindings();
 
         $stmt = $this->connection->prepare($sql);
         $stmt->execute($bindings);
@@ -799,11 +797,12 @@ class Builder
 
     public function first(): ?array
     {
-        $this->limit = 1;
+        $builder = $this->clone();
+        $builder->limit = 1;
 
-        $sql = $this->grammar->compileSelect($this->getComponents());
-        $bindings = $this->grammar->getBindings();
-        $this->grammar->resetBindings();
+        $sql = $builder->grammar->compileSelect($builder->getComponents());
+        $bindings = $builder->grammar->getBindings();
+        $builder->grammar->resetBindings();
 
         $stmt = $this->connection->prepare($sql);
         $stmt->execute($bindings);
@@ -815,11 +814,12 @@ class Builder
 
     public function pluck(string $column, ?string $key = null): Collection
     {
-        $this->columns = $key ? [$column, $key] : [$column];
+        $builder = $this->clone();
+        $builder->columns = $key ? [$column, $key] : [$column];
 
-        $sql = $this->grammar->compileSelect($this->getComponents());
-        $bindings = $this->grammar->getBindings();
-        $this->grammar->resetBindings();
+        $sql = $builder->grammar->compileSelect($builder->getComponents());
+        $bindings = $builder->grammar->getBindings();
+        $builder->grammar->resetBindings();
 
         $stmt = $this->connection->prepare($sql);
         $stmt->execute($bindings);
@@ -835,11 +835,13 @@ class Builder
 
     public function exists(): bool
     {
-        $this->columns = [1];
+        $builder = $this->clone();
+        $builder->columns = [1];
+        $builder->limit = 1;
 
-        $sql = $this->grammar->compileSelect($this->getComponents());
-        $bindings = $this->grammar->getBindings();
-        $this->grammar->resetBindings();
+        $sql = $builder->grammar->compileSelect($builder->getComponents());
+        $bindings = $builder->grammar->getBindings();
+        $builder->grammar->resetBindings();
 
         $stmt = $this->connection->prepare($sql);
         $stmt->execute($bindings);
@@ -959,6 +961,34 @@ class Builder
         return $query->clone()->toSqlParts();
     }
 
+    private function addWhereClause(string $column, mixed $operator, mixed $value, string $boolean, int $argumentCount): Builder
+    {
+        if ($argumentCount === 2) {
+            $value = $operator;
+            $operator = '=';
+        }
+
+        if ($value === null && in_array($operator, ['=', '!=', '<>'], true)) {
+            $this->wheres[] = [
+                'type' => $operator === '=' ? 'null' : 'notNull',
+                'column' => $column,
+                'boolean' => $boolean,
+            ];
+
+            return $this;
+        }
+
+        $this->wheres[] = [
+            'type' => 'basic',
+            'column' => $column,
+            'operator' => $operator,
+            'value' => $value,
+            'boolean' => $boolean,
+        ];
+
+        return $this;
+    }
+
     public function clone(): self
     {
         $builder = new self($this->connection);
@@ -976,7 +1006,6 @@ class Builder
         $builder->limit = $this->limit;
         $builder->offset = $this->offset;
         $builder->unions = $this->unions;
-        $builder->grammar = $this->grammar;
 
         return $builder;
     }

@@ -18,12 +18,12 @@ class JoinClause
 
     public function where(string $column, mixed $operator, mixed $value = null): self
     {
-        return $this->addBasicClause($column, $operator, $value, 'AND');
+        return $this->addBasicClause($column, $operator, $value, 'AND', func_num_args());
     }
 
     public function orWhere(string $column, mixed $operator, mixed $value = null): self
     {
-        return $this->addBasicClause($column, $operator, $value, 'OR');
+        return $this->addBasicClause($column, $operator, $value, 'OR', func_num_args());
     }
 
     public function whereNull(string $column): self
@@ -64,11 +64,15 @@ class JoinClause
         return $this;
     }
 
-    private function addBasicClause(string $column, mixed $operator, mixed $value, string $boolean): self
+    private function addBasicClause(string $column, mixed $operator, mixed $value, string $boolean, int $argumentCount): self
     {
-        if ($value === null) {
+        if ($argumentCount === 2) {
             $value = $operator;
             $operator = '=';
+        }
+
+        if ($value === null && in_array($operator, ['=', '!=', '<>'], true)) {
+            return $this->addNullClause($column, $boolean, $operator !== '=');
         }
 
         $this->clauses[] = [

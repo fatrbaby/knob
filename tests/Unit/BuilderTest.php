@@ -69,6 +69,16 @@ describe('Builder', function () {
             $sql = Knob::table('users')->where('status', 'active')->orWhere('status', 'pending')->toSqlParts();
             expect($sql['sql'])->toContain('status = ? OR status = ?');
         });
+
+        it('compiles null values as null predicates', function () {
+            $sql = Knob::table('users')
+                ->where('status', null)
+                ->orWhere('email', '!=', null)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('status IS NULL OR email IS NOT NULL')
+                ->and($sql['bindings'])->toBe([]);
+        });
     });
 
     describe('whereGroup', function () {
@@ -310,6 +320,18 @@ describe('Builder', function () {
             expect($sql['sql'])->toContain('ON users.id = profiles.user_id AND profiles.verified_at IS NOT NULL OR profiles.deleted_at IS NULL');
         });
 
+        it('generates join null predicates from null values', function () {
+            $sql = Knob::table('users')
+                ->join('profiles', fn ($join) => $join
+                    ->on('users.id', '=', 'profiles.user_id')
+                    ->where('profiles.deleted_at', null)
+                    ->orWhere('profiles.verified_at', '<>', null))
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('profiles.deleted_at IS NULL OR profiles.verified_at IS NOT NULL')
+                ->and($sql['bindings'])->toBe([]);
+        });
+
         it('generates callback joinSub with subquery and join clause bindings', function () {
             $sql = Knob::table('users')
                 ->joinSub(
@@ -511,7 +533,7 @@ describe('Builder', function () {
 
         it('interpolates booleans and nulls', function () {
             $sql = Knob::table('users')
-                ->where('status', null)
+                ->whereRaw('status = ?', [null])
                 ->orWhereRaw('is_admin = ?', [true])
                 ->toSql();
 
@@ -831,12 +853,46 @@ describe('Builder', function () {
             expect(fn () => Knob::query()->insert(['name' => 'NoTable']))->toThrow(RuntimeException::class, 'Table not set for insert');
         });
 
+        it('throws when inserting empty values', function () {
+            expect(fn () => Knob::table('users')->insert([]))->toThrow(RuntimeException::class, 'Insert values cannot be empty');
+        });
+
+        it('throws when inserting rows with inconsistent columns', function () {
+            expect(fn () => Knob::table('users')->insert([
+                ['name' => 'A', 'email' => 'a@example.com'],
+                ['name' => 'B'],
+            ]))->toThrow(RuntimeException::class, 'Insert rows must have the same columns');
+        });
+
         it('clones builder state independently', function () {
             $original = Knob::table('users')->where('status', 'active')->orderBy('name');
             $clone = $original->clone()->where('age', '>', 20);
 
             expect($original->toSqlParts()['sql'])->not->toContain('age > ?')
                 ->and($clone->toSqlParts()['sql'])->toContain('age > ?');
+        });
+
+        it('keeps terminal reads from mutating the builder state', function () {
+            $query = Knob::table('users')->where('status', 'active');
+
+            $query->count();
+            $afterCount = $query->toSqlParts();
+
+            $query->first();
+            $afterFirst = $query->toSqlParts();
+
+            $query->pluck('name');
+            $afterPluck = $query->toSqlParts();
+
+            $query->exists();
+            $afterExists = $query->toSqlParts();
+
+            expect($afterCount['columns'])->toBe(['*'])
+                ->and($afterCount['limit'])->toBeNull()
+                ->and($afterFirst['columns'])->toBe(['*'])
+                ->and($afterFirst['limit'])->toBeNull()
+                ->and($afterPluck['columns'])->toBe(['*'])
+                ->and($afterExists['columns'])->toBe(['*']);
         });
     });
 });

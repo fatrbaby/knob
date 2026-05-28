@@ -12,6 +12,11 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
     private array $items = [];
     private array $operations = [];
 
+    public static function from(array $items): Collection
+    {
+        return new static($items);
+    }
+
     public function __construct(array $items = [])
     {
         $this->items = $items;
@@ -139,7 +144,7 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
             foreach ($this->operations as $operation) {
                 if ($operation['type'] === 'map') {
                     $item = $operation['callback']($item);
-                } elseif (! $operation['callback']($item)) {
+                } elseif (!$operation['callback']($item)) {
                     continue 2;
                 }
             }
