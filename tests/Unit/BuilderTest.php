@@ -373,6 +373,22 @@ describe('Builder', function () {
                 ->and($sql['bindings'])->toBe(['published', 'article', true]);
         });
 
+        it('generates leftJoinSub with subquery and join clause bindings', function () {
+            $sql = Knob::table('users')
+                ->leftJoinSub(
+                    fn ($q) => $q->from('posts')->select('user_id')->where('status', 'published'),
+                    'p',
+                    fn ($join) => $join
+                        ->on('users.id', '=', 'p.user_id')
+                        ->where('p.kind', 'article')
+                )
+                ->where('users.active', true)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('LEFT JOIN (SELECT "user_id" FROM "posts" WHERE status = ?) AS "p" ON users.id = p.user_id AND p.kind = ?')
+                ->and($sql['bindings'])->toBe(['published', 'article', true]);
+        });
+
         it('generates cross join without on clause', function () {
             $sql = Knob::table('users')->crossJoin('posts')->toSqlParts();
             expect($sql['sql'])->toContain('CROSS JOIN "posts"')
@@ -503,6 +519,27 @@ describe('Builder', function () {
             expect($result['name'])->toBe('John');
         });
 
+        it('gets a scalar value', function () {
+            $name = Knob::table('users')->where('email', 'jane@example.com')->value('name');
+            $missing = Knob::table('users')->where('email', 'missing@example.com')->value('name');
+
+            expect($name)->toBe('Jane')
+                ->and($missing)->toBeNull();
+        });
+
+        it('keeps false scalar values distinct from missing rows', function () {
+            $pdo = Knob::getConnection();
+            $pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, false);
+            $pdo->exec('CREATE TABLE flags (id INTEGER PRIMARY KEY, enabled BOOLEAN)');
+            $pdo->exec('INSERT INTO flags (enabled) VALUES (false)');
+
+            $enabled = Knob::table('flags')->value('enabled');
+            $missing = Knob::table('flags')->where('id', 2)->value('enabled');
+
+            expect((bool) $enabled)->toBeFalse()
+                ->and($missing)->toBeNull();
+        });
+
         it('counts records', function () {
             $count = Knob::table('users')->count();
             expect($count)->toBe(2);
@@ -511,6 +548,11 @@ describe('Builder', function () {
         it('checks exists', function () {
             $exists = Knob::table('users')->where('status', 'active')->exists();
             expect($exists)->toBe(true);
+        });
+
+        it('checks doesntExist', function () {
+            expect(Knob::table('users')->where('status', 'archived')->doesntExist())->toBeTrue()
+                ->and(Knob::table('users')->where('status', 'active')->doesntExist())->toBeFalse();
         });
 
         it('plucks values', function () {
@@ -752,6 +794,21 @@ describe('Builder', function () {
                 ->and($sql['bindings'])->toBe([10]);
         });
 
+        it('supports orWhereSub with reusable builder input', function () {
+            $subquery = Knob::query()
+                ->selectRaw('MAX(score)')
+                ->from('scores')
+                ->where('scores.user_id', 10);
+
+            $sql = Knob::table('users')
+                ->where('status', 'active')
+                ->orWhereSub('score', '>=', $subquery)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('status = ? OR score >= (SELECT MAX(score) FROM "scores" WHERE scores.user_id = ?)')
+                ->and($sql['bindings'])->toBe(['active', 10]);
+        });
+
         it('supports whereExists with reusable builder input', function () {
             $subquery = Knob::query()
                 ->from('posts')
@@ -766,6 +823,27 @@ describe('Builder', function () {
                 'EXISTS (SELECT * FROM "posts" WHERE posts.user_id = users.id AND published = ?)'
             )
                 ->and($sql['bindings'])->toBe([true]);
+        });
+
+        it('supports orWhereExists and orWhereNotExists', function () {
+            $exists = Knob::query()
+                ->from('posts')
+                ->whereRaw('posts.user_id = users.id')
+                ->where('published', true);
+
+            $notExists = Knob::query()
+                ->from('bans')
+                ->whereRaw('bans.user_id = users.id')
+                ->where('active', true);
+
+            $sql = Knob::table('users')
+                ->where('status', 'active')
+                ->orWhereExists($exists)
+                ->orWhereNotExists($notExists)
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('status = ? OR EXISTS (SELECT * FROM "posts" WHERE posts.user_id = users.id AND published = ?) OR NOT EXISTS (SELECT * FROM "bans" WHERE bans.user_id = users.id AND active = ?)')
+                ->and($sql['bindings'])->toBe(['active', true, true]);
         });
 
         it('passes bindings through union', function () {

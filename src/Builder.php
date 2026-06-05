@@ -153,11 +153,21 @@ class Builder
 
     public function joinSub(Closure|Builder $callback, string $as, string|Closure $first, ?string $operator = null, ?string $second = null): Builder
     {
+        return $this->joinSubInternal($callback, $as, $first, $operator, $second, 'INNER JOIN');
+    }
+
+    public function leftJoinSub(Closure|Builder $callback, string $as, string|Closure $first, ?string $operator = null, ?string $second = null): Builder
+    {
+        return $this->joinSubInternal($callback, $as, $first, $operator, $second, 'LEFT JOIN');
+    }
+
+    private function joinSubInternal(Closure|Builder $callback, string $as, string|Closure $first, ?string $operator, ?string $second, string $type): Builder
+    {
         $subQuery = $this->normalizeSubquery($callback);
         $sql = $subQuery['sql'];
 
         $this->joins[] = [
-            'type' => 'INNER JOIN',
+            'type' => $type,
             'table' => "({$sql}) AS {$this->grammar->quoteIdentifier($as)}",
             'clauses' => $this->normalizeJoinClauses($first, $operator, $second),
             'bindings' => $subQuery['bindings'],
@@ -516,12 +526,22 @@ class Builder
 
     public function whereSub(string $column, string $operator, Closure|Builder $callback): Builder
     {
+        return $this->addWhereSubClause($column, $operator, $callback, 'AND');
+    }
+
+    public function orWhereSub(string $column, string $operator, Closure|Builder $callback): Builder
+    {
+        return $this->addWhereSubClause($column, $operator, $callback, 'OR');
+    }
+
+    private function addWhereSubClause(string $column, string $operator, Closure|Builder $callback, string $boolean): Builder
+    {
         $this->wheres[] = [
             'type' => 'sub',
             'column' => $column,
             'operator' => $operator,
             'query' => $this->normalizeSubquery($callback),
-            'boolean' => 'AND',
+            'boolean' => $boolean,
         ];
 
         return $this;
@@ -539,23 +559,31 @@ class Builder
 
     public function whereExists(Closure|Builder $callback): Builder
     {
-        $this->wheres[] = [
-            'type' => 'exists',
-            'query' => $this->normalizeSubquery($callback),
-            'boolean' => 'AND',
-            'not' => false,
-        ];
+        return $this->addWhereExistsClause($callback, 'AND', false);
+    }
 
-        return $this;
+    public function orWhereExists(Closure|Builder $callback): Builder
+    {
+        return $this->addWhereExistsClause($callback, 'OR', false);
     }
 
     public function whereNotExists(Closure|Builder $callback): Builder
     {
+        return $this->addWhereExistsClause($callback, 'AND', true);
+    }
+
+    public function orWhereNotExists(Closure|Builder $callback): Builder
+    {
+        return $this->addWhereExistsClause($callback, 'OR', true);
+    }
+
+    private function addWhereExistsClause(Closure|Builder $callback, string $boolean, bool $not): Builder
+    {
         $this->wheres[] = [
             'type' => 'exists',
             'query' => $this->normalizeSubquery($callback),
-            'boolean' => 'AND',
-            'not' => true,
+            'boolean' => $boolean,
+            'not' => $not,
         ];
 
         return $this;
@@ -952,6 +980,24 @@ class Builder
         return $result ?: null;
     }
 
+    public function value(string $column): mixed
+    {
+        $builder = $this->clone();
+        $builder->columns = [$column];
+        $builder->limit = 1;
+
+        $sql = $builder->grammar->compileSelect($builder->getComponents());
+        $bindings = $builder->grammar->getBindings();
+        $builder->grammar->resetBindings();
+
+        $stmt = $this->connection->prepare($sql);
+        $stmt->execute($bindings);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row[$column];
+    }
+
     public function pluck(string $column, ?string $key = null): Collection
     {
         $builder = $this->clone();
@@ -987,6 +1033,11 @@ class Builder
         $stmt->execute($bindings);
 
         return $stmt->fetchColumn() > 0;
+    }
+
+    public function doesntExist(): bool
+    {
+        return ! $this->exists();
     }
 
     public function paginate(int $perPage = 15, int $page = 1): array
