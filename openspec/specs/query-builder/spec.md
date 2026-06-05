@@ -36,12 +36,18 @@ Define the current baseline behavior of Knob query building and SQL compilation.
 
 - Subquery inputs are normalized from closures or reusable `Builder` instances where supported.
 - `selectSub` supports raw SQL strings, closures, and reusable builders.
-- `fromSub`, `joinSub`, `union`, and `unionAll` accept closures or reusable builders.
+- `fromSub`, `joinSub`, `leftJoinSub`, `union`, and `unionAll` accept closures or reusable builders.
 - `whereIn` and `whereNotIn` accept either value arrays or subquery inputs.
-- `whereSub`, `whereExists`, and `whereNotExists` accept closures or reusable builders.
+- `whereSub`, `orWhereSub`, `whereExists`, `orWhereExists`, `whereNotExists`, and `orWhereNotExists` accept closures or reusable builders.
 - Subquery bindings are propagated to parent query bindings in SQL placeholder order across select, from, join, where, and union components.
 
-### 6. SQL Introspection
+### 6. Query Convenience Methods
+
+- `leftJoinSub` provides a left-join variant for derived table joins.
+- `value($column)` returns the first selected scalar value or `null` when no row matches.
+- `doesntExist()` returns the inverse of `exists()`.
+
+### 7. SQL Introspection
 
 - `Builder::toSql()` returns SQL with bindings interpolated into placeholders.
 - `Builder::toSqlParts()` returns structured query details:
