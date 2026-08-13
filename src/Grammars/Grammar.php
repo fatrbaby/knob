@@ -569,7 +569,7 @@ abstract class Grammar
     {
         $table = $this->quoteIdentifier($components['table']);
         $columns = implode(', ', array_map(
-            fn ($col) => $this->quoteIdentifier($col),
+            $this->quoteIdentifier(...),
             $components['columns']
         ));
         $placeholders = $this->compileInsertPlaceholders($components['values']);
@@ -592,7 +592,7 @@ abstract class Grammar
 
         $sql = $this->compileInsert($components);
         $uniqueBy = implode(', ', array_map(
-            fn ($column) => $this->quoteIdentifier($column),
+            $this->quoteIdentifier(...),
             $components['uniqueBy']
         ));
         $updates = implode(', ', array_map(

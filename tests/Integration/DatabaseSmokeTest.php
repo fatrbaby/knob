@@ -47,8 +47,8 @@ function smokeDropTableSql(string $driver): string
     };
 }
 
-describe('Database smoke tests', function () {
-    it('runs a query builder smoke test against configured databases', function (string $driver) {
+describe('Database smoke tests', function (): void {
+    it('runs a query builder smoke test against configured databases', function (string $driver): void {
         $only = getenv('KNOB_SMOKE_ONLY');
 
         if ($only && $only !== $driver) {
@@ -89,7 +89,7 @@ describe('Database smoke tests', function () {
             expect($active)->toBe(['Alice'])
                 ->and(Knob::table('knob_smoke_users')->where('name', 'Bob')->update(['status' => 'active']))->toBe(1)
                 ->and(Knob::table('knob_smoke_users')->where('status', 'active')->count())->toBe(3)
-                ->and(fn () => Knob::transaction(function () {
+                ->and(fn () => Knob::transaction(function (): void {
                     Knob::table('knob_smoke_users')->insert(['name' => 'Dave', 'status' => 'active', 'age' => 40]);
 
                     throw new RuntimeException('rollback');

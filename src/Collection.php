@@ -9,7 +9,6 @@ use Traversable;
 
 class Collection implements IteratorAggregate, Countable, ArrayAccess
 {
-    private array $items = [];
     private array $operations = [];
 
     public static function from(array $items): Collection
@@ -17,9 +16,8 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
         return new static($items);
     }
 
-    public function __construct(array $items = [])
+    public function __construct(private array $items = [])
     {
-        $this->items = $items;
     }
 
     public function getIterator(): Traversable

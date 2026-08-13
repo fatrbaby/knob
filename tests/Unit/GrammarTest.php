@@ -23,8 +23,8 @@ function selectComponents(array $overrides = []): array
     ];
 }
 
-describe('Grammar compilation', function () {
-    it('quotes identifiers for each supported database', function (Grammar $grammar, string $expectedSql) {
+describe('Grammar compilation', function (): void {
+    it('quotes identifiers for each supported database', function (Grammar $grammar, string $expectedSql): void {
         expect($grammar->compileSelect(selectComponents()))->toBe($expectedSql);
     })->with([
         'mysql' => [new MySqlGrammar(), 'SELECT `id`, `name` FROM `users`'],
@@ -33,7 +33,7 @@ describe('Grammar compilation', function () {
         'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users]'],
     ]);
 
-    it('escapes identifier quote characters', function (Grammar $grammar, string $identifier, string $expected) {
+    it('escapes identifier quote characters', function (Grammar $grammar, string $identifier, string $expected): void {
         expect($grammar->quoteIdentifier($identifier))->toBe($expected);
     })->with([
         'mysql' => [new MySqlGrammar(), 'user`name', '`user``name`'],
@@ -42,7 +42,7 @@ describe('Grammar compilation', function () {
         'sqlserver' => [new SqlServerGrammar(), 'user]name', '[user]]name]'],
     ]);
 
-    it('compiles numeric select expressions as literals', function (Grammar $grammar, string $expectedSql) {
+    it('compiles numeric select expressions as literals', function (Grammar $grammar, string $expectedSql): void {
         expect($grammar->compileSelect(selectComponents(['columns' => [1]])))->toBe($expectedSql);
     })->with([
         'mysql' => [new MySqlGrammar(), 'SELECT 1 FROM `users`'],
@@ -51,7 +51,7 @@ describe('Grammar compilation', function () {
         'sqlserver' => [new SqlServerGrammar(), 'SELECT 1 FROM [users]'],
     ]);
 
-    it('compiles insert or ignore for supported databases', function (Grammar $grammar, string $expectedSql) {
+    it('compiles insert or ignore for supported databases', function (Grammar $grammar, string $expectedSql): void {
         $sql = $grammar->compileInsertOrIgnore([
             'table' => 'users',
             'columns' => ['id', 'name'],
@@ -66,7 +66,7 @@ describe('Grammar compilation', function () {
         'sqlite' => [new SqliteGrammar(), 'INSERT INTO "users" ("id", "name") VALUES (?, ?) ON CONFLICT DO NOTHING'],
     ]);
 
-    it('compiles upsert for each supported database', function (Grammar $grammar, string $expectedSql) {
+    it('compiles upsert for each supported database', function (Grammar $grammar, string $expectedSql): void {
         $sql = $grammar->compileUpsert([
             'table' => 'users',
             'columns' => ['id', 'name', 'email'],
@@ -84,7 +84,7 @@ describe('Grammar compilation', function () {
         'sqlserver' => [new SqlServerGrammar(), 'MERGE INTO [users] AS target USING (VALUES (?, ?, ?)) AS source ([id], [name], [email]) ON target.[id] = source.[id] WHEN MATCHED THEN UPDATE SET target.[name] = source.[name], target.[email] = source.[email] WHEN NOT MATCHED THEN INSERT ([id], [name], [email]) VALUES (source.[id], source.[name], source.[email]);'],
     ]);
 
-    it('compiles join table aliases for each supported database', function (Grammar $grammar, string $expectedSql) {
+    it('compiles join table aliases for each supported database', function (Grammar $grammar, string $expectedSql): void {
         $sql = $grammar->compileSelect(selectComponents([
             'from' => ['users', 'u', []],
             'joins' => [[
@@ -103,7 +103,7 @@ describe('Grammar compilation', function () {
         'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] AS [u] INNER JOIN [posts] AS [p] ON u.id = p.user_id'],
     ]);
 
-    it('compiles limit and offset for each supported database', function (Grammar $grammar, string $expectedSql) {
+    it('compiles limit and offset for each supported database', function (Grammar $grammar, string $expectedSql): void {
         $sql = $grammar->compileSelect(selectComponents([
             'orders' => [['column' => 'id', 'direction' => 'ASC']],
             'limit' => 10,
@@ -118,7 +118,7 @@ describe('Grammar compilation', function () {
         'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] ORDER BY id ASC OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY'],
     ]);
 
-    it('adds a default order for SQL Server limit without explicit order', function () {
+    it('adds a default order for SQL Server limit without explicit order', function (): void {
         $sql = (new SqlServerGrammar())->compileSelect(selectComponents([
             'columns' => [1],
             'limit' => 1,
@@ -127,7 +127,7 @@ describe('Grammar compilation', function () {
         expect($sql)->toBe('SELECT 1 FROM [users] ORDER BY (SELECT 0) OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY');
     });
 
-    it('compiles complex subquery components and bindings for each supported database', function (Grammar $grammar, string $expectedSql, array $expectedBindings) {
+    it('compiles complex subquery components and bindings for each supported database', function (Grammar $grammar, string $expectedSql, array $expectedBindings): void {
         $sql = $grammar->compileSelect(selectComponents([
             'columns' => [
                 'u.name',

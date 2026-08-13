@@ -60,7 +60,7 @@ class SqlServerGrammar extends Grammar
     {
         $table = $this->quoteIdentifier($components['table']);
         $columns = $components['columns'];
-        $quotedColumns = array_map(fn ($column) => $this->quoteIdentifier($column), $columns);
+        $quotedColumns = array_map($this->quoteIdentifier(...), $columns);
         $rowPlaceholder = $this->compileInsertRowPlaceholder(count($columns));
         $placeholders = implode(', ', array_fill(0, count($components['values']), $rowPlaceholder));
 

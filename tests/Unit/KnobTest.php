@@ -3,8 +3,8 @@
 use Knob\Driver;
 use Knob\Knob;
 
-describe('Knob facade', function () {
-    beforeEach(function () {
+describe('Knob facade', function (): void {
+    beforeEach(function (): void {
         $pdo = new PDO('sqlite::memory:');
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)');
@@ -12,12 +12,12 @@ describe('Knob facade', function () {
         Knob::using($pdo);
     });
 
-    it('detects the active PDO driver', function () {
+    it('detects the active PDO driver', function (): void {
         expect(Knob::getDriver())->toBe(Driver::SQLite);
     });
 
-    it('rolls back failed transactions', function () {
-        expect(fn () => Knob::transaction(function () {
+    it('rolls back failed transactions', function (): void {
+        expect(fn () => Knob::transaction(function (): void {
             Knob::table('users')->insert(['name' => 'Alice']);
 
             throw new RuntimeException('rollback');

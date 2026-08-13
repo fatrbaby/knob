@@ -8,7 +8,6 @@ use PDO;
 
 class Builder
 {
-    private PDO $connection;
     private ?string $table = null;
     private ?string $alias = null;
 
@@ -24,11 +23,10 @@ class Builder
     private ?int $offset = null;
     private array $unions = [];
 
-    private Grammar $grammar;
+    private readonly Grammar $grammar;
 
-    public function __construct(PDO $connection)
+    public function __construct(private readonly PDO $connection)
     {
-        $this->connection = $connection;
         $this->grammar = Knob::getDriver()->grammar();
     }
 

@@ -10,5 +10,5 @@ package.tar
 .DS_Store
 .idea
 .vscode
-
 .env
+.codegraph
