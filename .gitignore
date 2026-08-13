@@ -12,3 +12,4 @@ package.tar
 .vscode
 .env
 .codegraph
+.worktrees/
