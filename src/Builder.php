@@ -140,6 +140,8 @@ class Builder
             throw new \RuntimeException('Join operator and second column are required for simple joins');
         }
 
+        $operator = SqlOperator::normalize($operator);
+
         return [[
             'type' => 'on',
             'first' => $first,
@@ -161,13 +163,18 @@ class Builder
 
     private function joinSubInternal(Closure|Builder $callback, string $as, string|Closure $first, ?string $operator, ?string $second, string $type): Builder
     {
+        $clauses = is_string($first)
+            ? $this->normalizeJoinClauses($first, $operator, $second)
+            : null;
         $subQuery = $this->normalizeSubquery($callback);
         $sql = $subQuery['sql'];
+
+        $clauses ??= $this->normalizeJoinClauses($first, $operator, $second);
 
         $this->joins[] = [
             'type' => $type,
             'table' => "({$sql}) AS {$this->grammar->quoteIdentifier($as)}",
-            'clauses' => $this->normalizeJoinClauses($first, $operator, $second),
+            'clauses' => $clauses,
             'bindings' => $subQuery['bindings'],
         ];
 
@@ -420,35 +427,29 @@ class Builder
 
     public function whereColumn(string $first, string $operator, ?string $second = null): Builder
     {
-        if ($second === null) {
-            $second = $operator;
-            $operator = '=';
-        }
-
-        $this->wheres[] = [
-            'type' => 'column',
-            'first' => $first,
-            'operator' => $operator,
-            'second' => $second,
-            'boolean' => 'AND',
-        ];
-
-        return $this;
+        return $this->addWhereColumnClause($first, $operator, $second, 'AND');
     }
 
     public function orWhereColumn(string $first, string $operator, ?string $second = null): Builder
+    {
+        return $this->addWhereColumnClause($first, $operator, $second, 'OR');
+    }
+
+    private function addWhereColumnClause(string $first, string $operator, ?string $second, string $boolean): Builder
     {
         if ($second === null) {
             $second = $operator;
             $operator = '=';
         }
 
+        $operator = SqlOperator::normalize($operator);
+
         $this->wheres[] = [
             'type' => 'column',
             'first' => $first,
             'operator' => $operator,
             'second' => $second,
-            'boolean' => 'OR',
+            'boolean' => $boolean,
         ];
 
         return $this;
@@ -534,6 +535,8 @@ class Builder
 
     private function addWhereSubClause(string $column, string $operator, Closure|Builder $callback, string $boolean): Builder
     {
+        $operator = SqlOperator::normalize($operator);
+
         $this->wheres[] = [
             'type' => 'sub',
             'column' => $column,
@@ -652,6 +655,8 @@ class Builder
             $value = $operator;
             $operator = '=';
         }
+
+        $operator = SqlOperator::normalize($operator);
 
         $this->havings[] = [
             'type' => 'basic',
@@ -1157,6 +1162,8 @@ class Builder
             $operator = '=';
         }
 
+        $operator = SqlOperator::normalize($operator);
+
         if ($value === null && in_array($operator, ['=', '!=', '<>'], true)) {
             $this->wheres[] = [
                 'type' => $operator === '=' ? 'null' : 'notNull',
@@ -1198,6 +1205,8 @@ class Builder
             $value = $operator;
             $operator = '=';
         }
+
+        $operator = SqlOperator::normalize($operator);
 
         $this->wheres[] = [
             'type' => $type,

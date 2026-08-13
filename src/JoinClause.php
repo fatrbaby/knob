@@ -53,6 +53,8 @@ class JoinClause
 
     private function addOnClause(string $first, string $operator, string $second, string $boolean): self
     {
+        $operator = SqlOperator::normalize($operator);
+
         $this->clauses[] = [
             'type' => 'on',
             'first' => $first,
@@ -70,6 +72,8 @@ class JoinClause
             $value = $operator;
             $operator = '=';
         }
+
+        $operator = SqlOperator::normalize($operator);
 
         if ($value === null && in_array($operator, ['=', '!=', '<>'], true)) {
             return $this->addNullClause($column, $boolean, $operator !== '=');

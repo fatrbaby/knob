@@ -1086,4 +1086,148 @@ describe('Builder', function (): void {
                 ->and($afterExists['columns'])->toBe(['*']);
         });
     });
+
+    describe('SQL operator validation', function (): void {
+        it('normalizes operators at every Builder convergence point', function (): void {
+            $subquery = Knob::query()->selectRaw('1');
+
+            $parts = Knob::table('users')
+                ->join('posts', 'users.id', ' = ', 'posts.user_id')
+                ->joinSub($subquery, 'p', 'users.id', ' <> ', 'p.user_id')
+                ->where('name', ' like ', 'J%')
+                ->orWhereColumn('age', ' >= ', 'id')
+                ->whereSub('age', ' < ', $subquery)
+                ->orWhereDate('id', ' > ', 0)
+                ->having('id', ' iLiKe ', '%')
+                ->toSqlParts();
+
+            expect($parts['joins'][0]['clauses'][0]['operator'])->toBe('=')
+                ->and($parts['joins'][1]['clauses'][0]['operator'])->toBe('<>')
+                ->and($parts['wheres'][0]['operator'])->toBe('LIKE')
+                ->and($parts['wheres'][1]['operator'])->toBe('>=')
+                ->and($parts['wheres'][2]['operator'])->toBe('<')
+                ->and($parts['wheres'][3]['operator'])->toBe('>')
+                ->and($parts['havings'][0]['operator'])->toBe('ILIKE')
+                ->and($parts['sql'])->toContain('name LIKE ?')
+                ->and($parts['sql'])->toContain('HAVING id ILIKE ?');
+        });
+
+        it('rejects malicious operators without changing Builder state', function (Closure $apply): void {
+            $builder = Knob::table('users')->where('status', 'active');
+            $before = $builder->toSqlParts();
+
+            expect(fn () => $apply($builder))
+                ->toThrow(InvalidArgumentException::class, '= ? OR 1=1 --');
+
+            expect($builder->toSqlParts())->toBe($before);
+        })->with([
+            'where' => [fn ($query) => $query->where('age', '= ? OR 1=1 --', 18)],
+            'having' => [fn ($query) => $query->having('age', '= ? OR 1=1 --', 18)],
+            'simple join' => [fn ($query) => $query->join('posts', 'users.id', '= ? OR 1=1 --', 'posts.user_id')],
+            'whereColumn' => [fn ($query) => $query->whereColumn('users.id', '= ? OR 1=1 --', 'users.age')],
+            'whereSub' => [fn ($query) => $query->whereSub('age', '= ? OR 1=1 --', Knob::query()->selectRaw('1'))],
+            'date where' => [fn ($query) => $query->whereDate('id', '= ? OR 1=1 --', 1)],
+            'joinSub' => [fn ($query) => $query->joinSub(Knob::query()->selectRaw('1'), 'p', 'users.id', '= ? OR 1=1 --', 'p.id')],
+        ]);
+
+        it('rejects invalid subquery operators before invoking callbacks', function (): void {
+            $callbackCalls = 0;
+
+            expect(fn () => Knob::table('users')->whereSub(
+                'age',
+                '= ? OR 1=1 --',
+                function ($query) use (&$callbackCalls): void {
+                    $callbackCalls++;
+                    $query->selectRaw('1');
+                }
+            ))->toThrow(InvalidArgumentException::class);
+
+            expect(fn () => Knob::table('users')->joinSub(
+                function ($query) use (&$callbackCalls): void {
+                    $callbackCalls++;
+                    $query->selectRaw('1');
+                },
+                'p',
+                'users.id',
+                '= ? OR 1=1 --',
+                'p.id'
+            ))->toThrow(InvalidArgumentException::class);
+
+            expect($callbackCalls)->toBe(0);
+        });
+
+        it('preserves callback execution order for callback joinSub clauses', function (): void {
+            $calls = [];
+
+            Knob::table('users')->joinSub(
+                function ($query) use (&$calls): void {
+                    $calls[] = 'subquery';
+                    $query->selectRaw('1');
+                },
+                'p',
+                function ($join) use (&$calls): void {
+                    $calls[] = 'join';
+                    $join->on('users.id', '=', 'p.id');
+                }
+            );
+
+            expect($calls)->toBe(['subquery', 'join']);
+        });
+
+        it('preserves shorthand and null comparison behavior after normalization', function (): void {
+            $parts = Knob::table('users')
+                ->where('age', 18)
+                ->orWhere('email', ' = ', null)
+                ->orWhere('email', ' != ', null)
+                ->orWhere('email', ' <> ', null)
+                ->orWhere('email', ' like ', null)
+                ->toSqlParts();
+
+            expect($parts['sql'])->toContain('age = ? OR email IS NULL OR email IS NOT NULL OR email IS NOT NULL OR email LIKE ?')
+                ->and($parts['bindings'])->toBe([18, null])
+                ->and($parts['wheres'][4]['operator'])->toBe('LIKE');
+        });
+
+        it('normalizes callback join operators and preserves null conversion', function (): void {
+            $parts = Knob::table('users')
+                ->join('profiles', fn ($join) => $join
+                    ->on('users.id', ' = ', 'profiles.user_id')
+                    ->orOn('users.email', ' iLiKe ', 'profiles.email')
+                    ->where('profiles.kind', ' like ', 'public%')
+                    ->orWhere('profiles.deleted_at', ' <> ', null))
+                ->toSqlParts();
+
+            expect($parts['joins'][0]['clauses'][0]['operator'])->toBe('=')
+                ->and($parts['joins'][0]['clauses'][1]['operator'])->toBe('ILIKE')
+                ->and($parts['joins'][0]['clauses'][2]['operator'])->toBe('LIKE')
+                ->and($parts['joins'][0]['clauses'][3]['type'])->toBe('null')
+                ->and($parts['joins'][0]['clauses'][3]['not'])->toBeTrue()
+                ->and($parts['sql'])->toContain('profiles.kind LIKE ? OR profiles.deleted_at IS NOT NULL');
+        });
+
+        it('rejects malicious callback join operators without changing Builder state', function (Closure $apply): void {
+            $builder = Knob::table('users')->where('status', 'active');
+            $before = $builder->toSqlParts();
+
+            expect(fn () => $builder->join('profiles', fn ($join) => $apply($join)))
+                ->toThrow(InvalidArgumentException::class, '= ? OR 1=1 --');
+
+            expect($builder->toSqlParts())->toBe($before);
+        })->with([
+            'on clause' => [fn ($join) => $join->on('users.id', '= ? OR 1=1 --', 'profiles.user_id')],
+            'value clause' => [fn ($join) => $join->where('profiles.kind', '= ? OR 1=1 --', 'private')],
+        ]);
+
+        it('blocks a malicious callback join operator before SQLite execution', function (): void {
+            Knob::getConnection()->exec('CREATE TABLE profiles (id INTEGER PRIMARY KEY, user_id INTEGER, kind TEXT)');
+            Knob::getConnection()->exec("INSERT INTO profiles (user_id, kind) VALUES (1, 'private'), (2, 'private')");
+
+            expect(fn () => Knob::table('users')
+                ->join('profiles', fn ($join) => $join
+                    ->on('users.id', '=', 'profiles.user_id')
+                    ->where('profiles.kind', '= ? OR 1=1 --', 'missing'))
+                ->get())
+                ->toThrow(InvalidArgumentException::class, '= ? OR 1=1 --');
+        });
+    });
 });

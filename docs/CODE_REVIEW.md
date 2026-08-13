@@ -24,12 +24,18 @@
 ### CR-001：限制 SQL 操作符，避免 SQL 注入
 
 - 优先级：P0
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:1153`、`src/Builder.php:649`、`src/JoinClause.php:67`
 - 问题：`where`、`having` 和 join 条件中的操作符直接拼入 SQL。
 - 已验证：传入 `= ? OR 1=1 --` 可以绕过原条件并返回全部记录。
 - 建议：使用受支持操作符白名单；非法操作符抛出明确异常。
 - 完成标准：所有相关入口共用校验逻辑，并补充恶意操作符回归测试。
+- 处理人：Codex
+- 处理日期：2026-08-13
+- 变更摘要：新增共享 `SqlOperator` 规范化器，白名单限制 `=`、`!=`、`<>`、`<`、`<=`、`>`、`>=`、`LIKE`、`ILIKE`；在 Builder 与 JoinClause 的所有动态操作符汇合点进入状态前完成校验和规范化。
+- 回归测试：覆盖全部允许操作符、大小写/空白规范化、非字符串及注入载荷拒绝、where/having/simple join/callback join/joinSub/whereColumn/whereSub/日期条件入口、失败后状态不变、子查询回调不执行、两参数简写、null 比较、绑定顺序和 SQLite 执行级拦截。
+- 验证命令：`vendor/bin/pint --test src/SqlOperator.php src/Builder.php src/JoinClause.php tests/Unit/SqlOperatorTest.php tests/Unit/BuilderTest.php` 通过；`vendor/bin/pest tests/Unit/SqlOperatorTest.php tests/Unit/BuilderTest.php` 通过（145 tests，292 assertions）；`vendor/bin/pest` 通过（200 passed，3 skipped，378 assertions）。
+- 决策备注：`whereRaw()`、`orWhereRaw()`、`havingRaw()` 等明确接收原始 SQL 的 API 不应用操作符白名单，继续由调用方承担安全责任；`ILIKE` 仅保证编译，是否可执行由目标数据库决定。
 
 ### CR-002：修正 UNION 与排序、分页的编译顺序
 
