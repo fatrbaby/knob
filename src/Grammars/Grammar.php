@@ -30,7 +30,7 @@ abstract class Grammar
             $sql[] = $select . $this->compileColumns($components['columns']);
         }
 
-        if (! empty($components['from'])) {
+        if (! empty($components['from'][0])) {
             $sql[] = 'FROM ' . $this->compileFrom($components['from']);
         }
 
@@ -50,20 +50,20 @@ abstract class Grammar
             $sql[] = 'HAVING ' . $this->compileHavings($components['havings']);
         }
 
+        if (! empty($components['unions'])) {
+            $sql[] = $this->compileUnions($components['unions']);
+        }
+
         if (! empty($components['orders'])) {
-            $sql[] = $this->compileOrders($components['orders']);
+            $sql[] = $this->compileOrders($components['orders'], ! empty($components['unions']));
         }
 
         if (($components['limit'] ?? null) !== null || ($components['offset'] ?? null) !== null) {
             if (empty($components['orders']) && $this->requiresOrderForLimitOffset()) {
-                $sql[] = $this->compileDefaultOrderForLimitOffset();
+                $sql[] = $this->compileDefaultOrderForLimitOffset(! empty($components['unions']));
             }
 
             $sql[] = $this->compileLimitOffset($components['limit'] ?? null, $components['offset'] ?? null);
-        }
-
-        if (! empty($components['unions'])) {
-            $sql[] = $this->compileUnions($components['unions']);
         }
 
         return implode(' ', $sql);
@@ -77,7 +77,11 @@ abstract class Grammar
                     $this->addBinding($binding, 'select');
                 }
 
-                return $column['column'] . ' AS ' . $this->quoteIdentifier($column['alias']);
+                if (($column['type'] ?? null) === 'raw') {
+                    return $column['sql'];
+                }
+
+                return $column['column'] . ' AS ' . $this->wrapIdentifier($column['alias']);
             }
 
             if ($column === '*') {
@@ -88,11 +92,7 @@ abstract class Grammar
                 return (string) $column;
             }
 
-            if (str_contains($column, '(') || str_contains($column, ')')) {
-                return $column;
-            }
-
-            return $this->isQualified($column) ? $column : $this->quoteIdentifier($column);
+            return $this->wrapIdentifier($column);
         }, $columns));
     }
 
@@ -107,10 +107,10 @@ abstract class Grammar
         foreach ($bindings as $binding) {
             $this->addBinding($binding, 'from');
         }
-        $tableSql = str_starts_with($table, '(') ? $table : $this->quoteIdentifier($table);
+        $tableSql = str_starts_with($table, '(') ? $table : $this->wrapIdentifier($table);
 
         if ($alias) {
-            return $tableSql . ' AS ' . $this->quoteIdentifier($alias);
+            return $tableSql . ' AS ' . $this->wrapIdentifier($alias);
         }
 
         return $tableSql;
@@ -143,10 +143,10 @@ abstract class Grammar
     {
         $table = $join['table'];
         $alias = $join['alias'] ?? null;
-        $tableSql = str_starts_with($table, '(') ? $table : $this->quoteIdentifier($table);
+        $tableSql = str_starts_with($table, '(') ? $table : $this->wrapIdentifier($table);
 
         if ($alias) {
-            return $tableSql . ' AS ' . $this->quoteIdentifier($alias);
+            return $tableSql . ' AS ' . $this->wrapIdentifier($alias);
         }
 
         return $tableSql;
@@ -176,7 +176,7 @@ abstract class Grammar
         if (array_is_list($clause)) {
             [$first, $operator, $second] = $clause;
 
-            return "{$first} {$operator} {$second}";
+            return $this->wrapIdentifier($first) . " {$operator} " . $this->wrapIdentifier($second);
         }
 
         $type = $clause['type'] ?? 'on';
@@ -193,7 +193,7 @@ abstract class Grammar
     {
         ['first' => $first, 'operator' => $operator, 'second' => $second] = $clause;
 
-        return "{$first} {$operator} {$second}";
+        return $this->wrapIdentifier($first) . " {$operator} " . $this->wrapIdentifier($second);
     }
 
     protected function compileJoinBasicClause(array $clause): string
@@ -202,7 +202,7 @@ abstract class Grammar
 
         $this->addBinding($value, 'join');
 
-        return "{$column} {$operator} ?";
+        return $this->wrapIdentifier($column) . " {$operator} ?";
     }
 
     protected function compileJoinNullClause(array $clause): string
@@ -210,7 +210,7 @@ abstract class Grammar
         $column = $clause['column'];
         $not = $clause['not'] ?? false;
 
-        return $column . ($not ? ' IS NOT NULL' : ' IS NULL');
+        return $this->wrapIdentifier($column) . ($not ? ' IS NOT NULL' : ' IS NULL');
     }
 
     protected function compileWheres(array $wheres): string
@@ -261,7 +261,7 @@ abstract class Grammar
     {
         ['column' => $column, 'operator' => $operator, 'value' => $value] = $where;
 
-        $sql = "{$column} {$operator} ?";
+        $sql = $this->wrapIdentifier($column) . " {$operator} ?";
         $this->addBinding($value, 'where');
 
         return $sql;
@@ -279,7 +279,7 @@ abstract class Grammar
         $placeholders = implode(', ', array_fill(0, count($values), '?'));
         $this->addBinding($values, 'where');
 
-        return "{$column} IN ({$placeholders})";
+        return $this->wrapIdentifier($column) . " IN ({$placeholders})";
     }
 
     protected function compileWhereNotIn(array $where): string
@@ -294,7 +294,7 @@ abstract class Grammar
         $placeholders = implode(', ', array_fill(0, count($values), '?'));
         $this->addBinding($values, 'where');
 
-        return "{$column} NOT IN ({$placeholders})";
+        return $this->wrapIdentifier($column) . " NOT IN ({$placeholders})";
     }
 
     protected function compileWhereInSub(array $where): string
@@ -318,7 +318,7 @@ abstract class Grammar
 
         $op = $not ? 'NOT BETWEEN' : 'BETWEEN';
 
-        return "{$column} {$op} ? AND ?";
+        return $this->wrapIdentifier($column) . " {$op} ? AND ?";
     }
 
     protected function compileWhereLike(array $where): string
@@ -331,28 +331,28 @@ abstract class Grammar
 
         $op = $not ? 'NOT LIKE' : 'LIKE';
 
-        return "{$column} {$op} ?";
+        return $this->wrapIdentifier($column) . " {$op} ?";
     }
 
     protected function compileWhereColumn(array $where): string
     {
         ['first' => $first, 'operator' => $operator, 'second' => $second] = $where;
 
-        return "{$first} {$operator} {$second}";
+        return $this->wrapIdentifier($first) . " {$operator} " . $this->wrapIdentifier($second);
     }
 
     protected function compileWhereNull(array $where): string
     {
         $column = $where['column'];
 
-        return "{$column} IS NULL";
+        return $this->wrapIdentifier($column) . ' IS NULL';
     }
 
     protected function compileWhereNotNull(array $where): string
     {
         $column = $where['column'];
 
-        return "{$column} IS NOT NULL";
+        return $this->wrapIdentifier($column) . ' IS NOT NULL';
     }
 
     protected function compileWhereSub(array $where): string
@@ -361,7 +361,7 @@ abstract class Grammar
         $operator = $where['operator'];
         $query = $where['query'];
 
-        $sql = "{$column} {$operator} ({$query['sql']})";
+        $sql = $this->wrapIdentifier($column) . " {$operator} ({$query['sql']})";
         $this->addSubqueryBindings($query['bindings'], 'where');
 
         return $sql;
@@ -416,7 +416,7 @@ abstract class Grammar
 
         $this->addBinding($value, 'where');
 
-        return $this->compileDateExpression($type, $column) . " {$operator} ?";
+        return $this->compileDateExpression($type, $this->wrapIdentifier($column)) . " {$operator} ?";
     }
 
     protected function compileWhereRaw(array $where): string
@@ -438,7 +438,7 @@ abstract class Grammar
 
         $this->addSubqueryBindings($query['bindings'], 'where');
 
-        return "{$column} {$operator} ({$query['sql']})";
+        return $this->wrapIdentifier($column) . " {$operator} ({$query['sql']})";
     }
 
     protected function addSubqueryBindings(array $bindings, string $type): void
@@ -459,7 +459,7 @@ abstract class Grammar
                 return $group['sql'];
             }
 
-            return $this->isQualified($group) ? $group : $this->quoteIdentifier($group);
+            return $this->wrapIdentifier($group);
         }, $groups));
     }
 
@@ -491,7 +491,7 @@ abstract class Grammar
 
         $this->addBinding($value, 'having');
 
-        return "{$column} {$operator} ?";
+        return $this->wrapIdentifier($column) . " {$operator} ?";
     }
 
     protected function compileHavingRaw(array $having): string
@@ -503,9 +503,9 @@ abstract class Grammar
         return $having['sql'];
     }
 
-    protected function compileOrders(array $orders): string
+    protected function compileOrders(array $orders, bool $compound = false): string
     {
-        return 'ORDER BY ' . implode(', ', array_map(function ($order) {
+        return 'ORDER BY ' . implode(', ', array_map(function ($order) use ($compound) {
             if (($order['type'] ?? null) === 'raw') {
                 foreach ($order['bindings'] ?? [] as $binding) {
                     $this->addBinding($binding, 'order');
@@ -514,8 +514,19 @@ abstract class Grammar
                 return $order['sql'];
             }
 
-            return $order['column'] . ' ' . $order['direction'];
+            $column = $compound
+                ? $this->compoundOrderIdentifier($order['column'])
+                : $this->wrapIdentifier($order['column']);
+
+            return $column . ' ' . $order['direction'];
         }, $orders));
+    }
+
+    protected function compoundOrderIdentifier(string $identifier): string
+    {
+        $parts = explode('.', preg_split('/\s+as\s+/i', trim($identifier), 2)[0]);
+
+        return $this->wrapIdentifier($parts[array_key_last($parts)]);
     }
 
     protected function compileDateExpression(string $type, string $column): string
@@ -534,7 +545,7 @@ abstract class Grammar
         return false;
     }
 
-    protected function compileDefaultOrderForLimitOffset(): string
+    protected function compileDefaultOrderForLimitOffset(bool $compound = false): string
     {
         return '';
     }
@@ -559,7 +570,13 @@ abstract class Grammar
             foreach ($union['bindings'] ?? [] as $binding) {
                 $this->addBinding($binding, 'union');
             }
-            $sql[] = ($union['all'] ? 'UNION ALL ' : 'UNION ') . $union['sql'];
+            $query = $union['sql'];
+
+            if ($union['requiresWrapper'] ?? false) {
+                $query = 'SELECT * FROM (' . $query . ') AS ' . $this->quoteIdentifier('__knob_union');
+            }
+
+            $sql[] = ($union['all'] ? 'UNION ALL ' : 'UNION ') . $query;
         }
 
         return implode(' ', $sql);
@@ -567,9 +584,9 @@ abstract class Grammar
 
     public function compileInsert(array $components): string
     {
-        $table = $this->quoteIdentifier($components['table']);
+        $table = $this->wrapIdentifier($components['table']);
         $columns = implode(', ', array_map(
-            $this->quoteIdentifier(...),
+            $this->wrapIdentifier(...),
             $components['columns']
         ));
         $placeholders = $this->compileInsertPlaceholders($components['values']);
@@ -592,11 +609,11 @@ abstract class Grammar
 
         $sql = $this->compileInsert($components);
         $uniqueBy = implode(', ', array_map(
-            $this->quoteIdentifier(...),
+            $this->wrapIdentifier(...),
             $components['uniqueBy']
         ));
         $updates = implode(', ', array_map(
-            fn ($column) => $this->quoteIdentifier($column) . ' = excluded.' . $this->quoteIdentifier($column),
+            fn ($column) => $this->wrapIdentifier($column) . ' = excluded.' . $this->wrapIdentifier($column),
             $components['update']
         ));
 
@@ -620,11 +637,11 @@ abstract class Grammar
         $this->bindings['update'] = [];
         $this->bindings['where'] = [];
 
-        $table = $this->quoteIdentifier($components['table']);
+        $table = $this->wrapIdentifier($components['table']);
         $sets = [];
 
         foreach ($components['values'] as $column => $value) {
-            $sets[] = $this->quoteIdentifier($column) . ' = ?';
+            $sets[] = $this->wrapIdentifier($column) . ' = ?';
             $this->addBinding($value, 'update');
         }
 
@@ -641,7 +658,7 @@ abstract class Grammar
     {
         $this->bindings['where'] = [];
 
-        $table = $this->quoteIdentifier($components['table']);
+        $table = $this->wrapIdentifier($components['table']);
 
         $sql = "DELETE FROM {$table}";
 
@@ -654,7 +671,7 @@ abstract class Grammar
 
     public function compileTruncate(string $table): string
     {
-        return 'TRUNCATE ' . $this->quoteIdentifier($table);
+        return 'TRUNCATE ' . $this->wrapIdentifier($table);
     }
 
     public function getBindings(): array
@@ -666,8 +683,8 @@ abstract class Grammar
             $this->bindings['where'],
             $this->bindings['groupBy'],
             $this->bindings['having'],
-            $this->bindings['order'],
             $this->bindings['union'],
+            $this->bindings['order'],
             $this->bindings['insert'],
             $this->bindings['update']
         );
@@ -713,8 +730,18 @@ abstract class Grammar
         return $value;
     }
 
-    protected function isQualified(string $column): bool
+    public function wrapIdentifier(string $identifier): string
     {
-        return str_contains($column, '.');
+        $parts = preg_split('/\s+as\s+/i', trim($identifier), 2);
+        $wrapped = implode('.', array_map(
+            fn (string $part): string => $part === '*' ? '*' : $this->quoteIdentifier($part),
+            explode('.', $parts[0])
+        ));
+
+        if (isset($parts[1])) {
+            return $wrapped . ' AS ' . $this->quoteIdentifier($parts[1]);
+        }
+
+        return $wrapped;
     }
 }

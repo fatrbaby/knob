@@ -19,6 +19,20 @@ class SqliteGrammar extends Grammar
         return "OFFSET {$offset}";
     }
 
+    protected function compileLimitOffset(?int $limit, ?int $offset): string
+    {
+        if ($limit === null && $offset !== null) {
+            return "LIMIT -1 OFFSET {$offset}";
+        }
+
+        return parent::compileLimitOffset($limit, $offset);
+    }
+
+    public function compileTruncate(string $table): string
+    {
+        return 'DELETE FROM ' . $this->wrapIdentifier($table);
+    }
+
     protected function compileDateExpression(string $type, string $column): string
     {
         return match ($type) {

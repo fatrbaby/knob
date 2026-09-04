@@ -43,7 +43,7 @@ class MySqlGrammar extends Grammar
 
         $sql = $this->compileInsert($components);
         $updates = implode(', ', array_map(
-            fn ($column) => $this->quoteIdentifier($column) . ' = VALUES(' . $this->quoteIdentifier($column) . ')',
+            fn ($column) => $this->wrapIdentifier($column) . ' = VALUES(' . $this->wrapIdentifier($column) . ')',
             $components['update']
         ));
 

@@ -40,41 +40,65 @@
 ### CR-002：修正 UNION 与排序、分页的编译顺序
 
 - 优先级：P0
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Grammars/Grammar.php:53-67`
 - 问题：当前先输出 `ORDER BY/LIMIT/OFFSET`，再输出 `UNION`。
 - 已验证：SQLite 报错 `ORDER BY clause should come after UNION ALL`。
 - 建议：定义主查询、union 子查询和整体排序分页的明确语义，必要时对子查询加括号。
 - 完成标准：四种数据库均有 SQL 编译测试，至少 SQLite 有执行测试。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：将 UNION/UNION ALL 编译到整体 ORDER BY、LIMIT、OFFSET 之前，并同步调整 union 与 order 绑定顺序；需要局部分页或嵌套 union 的分支通过派生表隔离作用域；compound query 的结构化排序使用输出列名，SQL Server 无显式排序时使用输出序号。
+- 回归测试：覆盖 MySQL、PostgreSQL、SQLite、SQL Server 的整体排序分页与限定排序列编译、SQL Server 默认 compound 排序、union/order 参数绑定顺序、SQLite 整体排序分页执行，以及 union 分支局部分页执行。
+- 验证命令：`vendor/bin/pest tests/Unit/GrammarTest.php tests/Unit/BuilderTest.php`；`vendor/bin/pest`。
+- 决策备注：外层 Builder 的 ORDER BY/LIMIT/OFFSET 作用于完整 compound query；结构化限定排序名会收敛为 compound 输出列名，复杂表达式应使用 `orderByRaw()`。传给 `union()`/`unionAll()` 的 Builder 自身分页仅作用于该分支，必要时编译为带固定内部别名的派生表；未分页分支的排序没有可观察语义，编译时省略，以兼容 SQL Server 派生表限制。
 
 ### CR-003：统一并完善标识符引用
 
 - 优先级：P0
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Grammars/Grammar.php:95`、`:110`、`:192-205`、`:260-267`、`:337-341`、`:488-518`
 - 问题：WHERE、JOIN、ORDER BY、HAVING 等位置未正确引用列名；`main.x` 会被编译为单个标识符 `"main.x"`。
 - 已验证：保留字列 `order` 用于 `where()` 或 `orderBy()` 时产生 SQL 语法错误。
 - 建议：实现统一的 `wrapIdentifier()`，支持 `schema.table`、`table.column`、`table.*`、别名；原始表达式使用独立类型。
 - 完成标准：所有非 raw API 统一引用标识符，并覆盖保留字和限定名称测试。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：新增统一 `Grammar::wrapIdentifier()`，逐段引用限定标识符并支持 `*` 与显式 `AS` 别名；SELECT、FROM、JOIN、WHERE、GROUP BY、HAVING、ORDER BY、日期条件及写操作统一使用该入口，`selectRaw()` 改用明确的 raw 组件。
+- 回归测试：四种方言覆盖限定列、限定表、通配符、别名和全部结构化子句；覆盖所有结构化 where 类型、raw API 保持原文与绑定，以及 SQLite 保留字列的真实查询执行。
+- 验证命令：`vendor/bin/pint --test src/Builder.php src/Grammars/Grammar.php src/Grammars/MySqlGrammar.php src/Grammars/SqlServerGrammar.php src/Grammars/SqliteGrammar.php tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php`；`vendor/bin/pest`。
+- 决策备注：只有名称包含 `Raw` 的公开 API 以及内部生成的子查询 SQL 绕过标识符引用；普通 `select()` 不再根据括号猜测表达式，表达式应显式使用 `selectRaw()`。
 
 ### CR-004：修正无 FROM 查询生成非法 SQL
 
 - 优先级：P0
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:1062-1076`、`src/Grammars/Grammar.php:33-35`
 - 问题：`Knob::query()->selectRaw('1')` 生成 `SELECT 1 FROM`。
 - 建议：无表时不要生成 `from` 组件，或让 Grammar 判断实际表名。
 - 完成标准：无 FROM 的常量/表达式查询能正确编译和执行。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：Grammar 根据 from 组件中的实际表名决定是否输出 FROM，并让 `selectRaw()` 以明确的 raw 组件编译常量和表达式。
+- 回归测试：覆盖 `selectRaw('1')` 精确编译为 `SELECT 1`，以及 SQLite 执行 `SELECT 1 AS result`。
+- 验证命令：`vendor/bin/pest tests/Unit/BuilderTest.php`；`vendor/bin/pest`。
+- 决策备注：无表查询仍支持 LIMIT/OFFSET 等目标方言允许的后续组件；只省略不存在的 FROM 子句。
 
 ### CR-005：补齐 SQLite 的 OFFSET 和 TRUNCATE 方言
 
 - 优先级：P0
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Grammars/SqliteGrammar.php:12-20`、`src/Grammars/Grammar.php:655-658`
 - 问题：SQLite 不支持单独的 `OFFSET n`，也不支持 `TRUNCATE`。
 - 已验证：两个公开 API 在 SQLite 上均执行失败。
 - 建议：offset-only 使用 `LIMIT -1 OFFSET n`；truncate 对 SQLite 使用 `DELETE FROM`，并明确自增序列处理语义。
 - 完成标准：增加 SQLite 执行级回归测试。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：SQLite offset-only 编译为 `LIMIT -1 OFFSET n`，truncate 编译为 `DELETE FROM <table>`。
+- 回归测试：覆盖 offset-only 精确 SQL 与 SQLite 真实分页执行，并覆盖 truncate 删除全部行后继续使用原自增序列。
+- 验证命令：`vendor/bin/pest tests/Unit/GrammarTest.php tests/Unit/BuilderTest.php`；`vendor/bin/pest`。
+- 决策备注：SQLite truncate 仿真实现只删除行，不操作 `sqlite_sequence`，因此自增值不会重置；这避免额外语句和隐式序列副作用。
 
 ### CR-006：统一 selectSub 的可空别名契约
 

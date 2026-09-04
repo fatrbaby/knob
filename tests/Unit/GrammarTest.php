@@ -33,6 +33,51 @@ describe('Grammar compilation', function (): void {
         'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users]'],
     ]);
 
+    it('quotes qualified identifiers aliases and wildcards in every structured clause', function (Grammar $grammar, string $expectedSql): void {
+        $sql = $grammar->compileSelect(selectComponents([
+            'columns' => [
+                'u.order',
+                'u.*',
+                'u.name AS display_name',
+                ['type' => 'raw', 'sql' => 'COUNT(*) AS total'],
+            ],
+            'from' => ['main.users', 'u', []],
+            'joins' => [[
+                'type' => 'INNER JOIN',
+                'table' => 'main.posts',
+                'alias' => 'p',
+                'clauses' => [
+                    ['type' => 'on', 'first' => 'u.id', 'operator' => '=', 'second' => 'p.user_id', 'boolean' => 'AND'],
+                    ['type' => 'basic', 'column' => 'p.order', 'operator' => '=', 'value' => 'featured', 'boolean' => 'AND'],
+                    ['type' => 'null', 'column' => 'p.deleted_at', 'not' => false, 'boolean' => 'AND'],
+                ],
+            ]],
+            'wheres' => [[
+                'type' => 'basic',
+                'column' => 'u.order',
+                'operator' => '=',
+                'value' => 1,
+                'boolean' => 'AND',
+            ]],
+            'groups' => ['u.order'],
+            'havings' => [[
+                'type' => 'basic',
+                'column' => 'u.order',
+                'operator' => '>',
+                'value' => 0,
+            ]],
+            'orders' => [['column' => 'u.order', 'direction' => 'ASC']],
+        ]));
+
+        expect($sql)->toBe($expectedSql)
+            ->and($grammar->getBindings())->toBe(['featured', 1, 0]);
+    })->with([
+        'mysql' => [new MySqlGrammar(), 'SELECT `u`.`order`, `u`.*, `u`.`name` AS `display_name`, COUNT(*) AS total FROM `main`.`users` AS `u` INNER JOIN `main`.`posts` AS `p` ON `u`.`id` = `p`.`user_id` AND `p`.`order` = ? AND `p`.`deleted_at` IS NULL WHERE `u`.`order` = ? GROUP BY `u`.`order` HAVING `u`.`order` > ? ORDER BY `u`.`order` ASC'],
+        'postgres' => [new PostgresGrammar(), 'SELECT "u"."order", "u".*, "u"."name" AS "display_name", COUNT(*) AS total FROM "main"."users" AS "u" INNER JOIN "main"."posts" AS "p" ON "u"."id" = "p"."user_id" AND "p"."order" = ? AND "p"."deleted_at" IS NULL WHERE "u"."order" = ? GROUP BY "u"."order" HAVING "u"."order" > ? ORDER BY "u"."order" ASC'],
+        'sqlite' => [new SqliteGrammar(), 'SELECT "u"."order", "u".*, "u"."name" AS "display_name", COUNT(*) AS total FROM "main"."users" AS "u" INNER JOIN "main"."posts" AS "p" ON "u"."id" = "p"."user_id" AND "p"."order" = ? AND "p"."deleted_at" IS NULL WHERE "u"."order" = ? GROUP BY "u"."order" HAVING "u"."order" > ? ORDER BY "u"."order" ASC'],
+        'sqlserver' => [new SqlServerGrammar(), 'SELECT [u].[order], [u].*, [u].[name] AS [display_name], COUNT(*) AS total FROM [main].[users] AS [u] INNER JOIN [main].[posts] AS [p] ON [u].[id] = [p].[user_id] AND [p].[order] = ? AND [p].[deleted_at] IS NULL WHERE [u].[order] = ? GROUP BY [u].[order] HAVING [u].[order] > ? ORDER BY [u].[order] ASC'],
+    ]);
+
     it('escapes identifier quote characters', function (Grammar $grammar, string $identifier, string $expected): void {
         expect($grammar->quoteIdentifier($identifier))->toBe($expected);
     })->with([
@@ -97,10 +142,10 @@ describe('Grammar compilation', function (): void {
 
         expect($sql)->toBe($expectedSql);
     })->with([
-        'mysql' => [new MySqlGrammar(), 'SELECT `id`, `name` FROM `users` AS `u` INNER JOIN `posts` AS `p` ON u.id = p.user_id'],
-        'postgres' => [new PostgresGrammar(), 'SELECT "id", "name" FROM "users" AS "u" INNER JOIN "posts" AS "p" ON u.id = p.user_id'],
-        'sqlite' => [new SqliteGrammar(), 'SELECT "id", "name" FROM "users" AS "u" INNER JOIN "posts" AS "p" ON u.id = p.user_id'],
-        'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] AS [u] INNER JOIN [posts] AS [p] ON u.id = p.user_id'],
+        'mysql' => [new MySqlGrammar(), 'SELECT `id`, `name` FROM `users` AS `u` INNER JOIN `posts` AS `p` ON `u`.`id` = `p`.`user_id`'],
+        'postgres' => [new PostgresGrammar(), 'SELECT "id", "name" FROM "users" AS "u" INNER JOIN "posts" AS "p" ON "u"."id" = "p"."user_id"'],
+        'sqlite' => [new SqliteGrammar(), 'SELECT "id", "name" FROM "users" AS "u" INNER JOIN "posts" AS "p" ON "u"."id" = "p"."user_id"'],
+        'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] AS [u] INNER JOIN [posts] AS [p] ON [u].[id] = [p].[user_id]'],
     ]);
 
     it('compiles limit and offset for each supported database', function (Grammar $grammar, string $expectedSql): void {
@@ -112,10 +157,10 @@ describe('Grammar compilation', function (): void {
 
         expect($sql)->toBe($expectedSql);
     })->with([
-        'mysql' => [new MySqlGrammar(), 'SELECT `id`, `name` FROM `users` ORDER BY id ASC LIMIT 10 OFFSET 20'],
-        'postgres' => [new PostgresGrammar(), 'SELECT "id", "name" FROM "users" ORDER BY id ASC LIMIT 10 OFFSET 20'],
-        'sqlite' => [new SqliteGrammar(), 'SELECT "id", "name" FROM "users" ORDER BY id ASC LIMIT 10 OFFSET 20'],
-        'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] ORDER BY id ASC OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY'],
+        'mysql' => [new MySqlGrammar(), 'SELECT `id`, `name` FROM `users` ORDER BY `id` ASC LIMIT 10 OFFSET 20'],
+        'postgres' => [new PostgresGrammar(), 'SELECT "id", "name" FROM "users" ORDER BY "id" ASC LIMIT 10 OFFSET 20'],
+        'sqlite' => [new SqliteGrammar(), 'SELECT "id", "name" FROM "users" ORDER BY "id" ASC LIMIT 10 OFFSET 20'],
+        'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] ORDER BY [id] ASC OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY'],
     ]);
 
     it('adds a default order for SQL Server limit without explicit order', function (): void {
@@ -125,6 +170,47 @@ describe('Grammar compilation', function (): void {
         ]));
 
         expect($sql)->toBe('SELECT 1 FROM [users] ORDER BY (SELECT 0) OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY');
+    });
+
+    it('compiles a SQLite offset without a limit', function (): void {
+        $sql = (new SqliteGrammar())->compileSelect(selectComponents([
+            'offset' => 20,
+        ]));
+
+        expect($sql)->toBe('SELECT "id", "name" FROM "users" LIMIT -1 OFFSET 20');
+    });
+
+    it('compiles union before compound query ordering and pagination', function (Grammar $grammar, string $expectedSql): void {
+        $sql = $grammar->compileSelect(selectComponents([
+            'orders' => [['column' => 'users.id', 'direction' => 'ASC']],
+            'limit' => 10,
+            'offset' => 20,
+            'unions' => [[
+                'all' => true,
+                'sql' => 'SELECT id, name FROM archived_users',
+                'bindings' => [],
+            ]],
+        ]));
+
+        expect($sql)->toBe($expectedSql);
+    })->with([
+        'mysql' => [new MySqlGrammar(), 'SELECT `id`, `name` FROM `users` UNION ALL SELECT id, name FROM archived_users ORDER BY `id` ASC LIMIT 10 OFFSET 20'],
+        'postgres' => [new PostgresGrammar(), 'SELECT "id", "name" FROM "users" UNION ALL SELECT id, name FROM archived_users ORDER BY "id" ASC LIMIT 10 OFFSET 20'],
+        'sqlite' => [new SqliteGrammar(), 'SELECT "id", "name" FROM "users" UNION ALL SELECT id, name FROM archived_users ORDER BY "id" ASC LIMIT 10 OFFSET 20'],
+        'sqlserver' => [new SqlServerGrammar(), 'SELECT [id], [name] FROM [users] UNION ALL SELECT id, name FROM archived_users ORDER BY [id] ASC OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY'],
+    ]);
+
+    it('uses an output ordinal for SQL Server compound pagination without an explicit order', function (): void {
+        $sql = (new SqlServerGrammar())->compileSelect(selectComponents([
+            'limit' => 10,
+            'unions' => [[
+                'all' => true,
+                'sql' => 'SELECT id, name FROM archived_users',
+                'bindings' => [],
+            ]],
+        ]));
+
+        expect($sql)->toBe('SELECT [id], [name] FROM [users] UNION ALL SELECT id, name FROM archived_users ORDER BY 1 OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY');
     });
 
     it('compiles complex subquery components and bindings for each supported database', function (Grammar $grammar, string $expectedSql, array $expectedBindings): void {
@@ -204,22 +290,22 @@ describe('Grammar compilation', function (): void {
     })->with([
         'mysql' => [
             new MySqlGrammar(),
-            'SELECT u.name, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS `published_posts` FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS `u` INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS `post_scores` ON u.id = post_scores.user_id WHERE (u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?)) AND u.id IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) ORDER BY u.name ASC LIMIT 5 OFFSET 10 UNION ALL SELECT name FROM archived_users WHERE restored = ?',
+            'SELECT `u`.`name`, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS `published_posts` FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS `u` INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS `post_scores` ON `u`.`id` = `post_scores`.`user_id` WHERE (`u`.`status` = ? OR (`u`.`status` = ? AND `u`.`age` BETWEEN ? AND ?)) AND `u`.`id` IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) UNION ALL SELECT name FROM archived_users WHERE restored = ? ORDER BY `name` ASC LIMIT 5 OFFSET 10',
             [1, 'banned', 1, 'active', 'pending', 20, 30, 1, 0, -1, 0],
         ],
         'postgres' => [
             new PostgresGrammar(),
-            'SELECT u.name, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS "published_posts" FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS "u" INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS "post_scores" ON u.id = post_scores.user_id WHERE (u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?)) AND u.id IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) ORDER BY u.name ASC LIMIT 5 OFFSET 10 UNION ALL SELECT name FROM archived_users WHERE restored = ?',
+            'SELECT "u"."name", (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS "published_posts" FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS "u" INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS "post_scores" ON "u"."id" = "post_scores"."user_id" WHERE ("u"."status" = ? OR ("u"."status" = ? AND "u"."age" BETWEEN ? AND ?)) AND "u"."id" IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) UNION ALL SELECT name FROM archived_users WHERE restored = ? ORDER BY "name" ASC LIMIT 5 OFFSET 10',
             [1, 'banned', 1, 'active', 'pending', 20, 30, 1, 0, -1, 0],
         ],
         'sqlite' => [
             new SqliteGrammar(),
-            'SELECT u.name, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS "published_posts" FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS "u" INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS "post_scores" ON u.id = post_scores.user_id WHERE (u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?)) AND u.id IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) ORDER BY u.name ASC LIMIT 5 OFFSET 10 UNION ALL SELECT name FROM archived_users WHERE restored = ?',
+            'SELECT "u"."name", (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS "published_posts" FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS "u" INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS "post_scores" ON "u"."id" = "post_scores"."user_id" WHERE ("u"."status" = ? OR ("u"."status" = ? AND "u"."age" BETWEEN ? AND ?)) AND "u"."id" IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) UNION ALL SELECT name FROM archived_users WHERE restored = ? ORDER BY "name" ASC LIMIT 5 OFFSET 10',
             [1, 'banned', 1, 'active', 'pending', 20, 30, 1, 0, -1, 0],
         ],
         'sqlserver' => [
             new SqlServerGrammar(),
-            'SELECT u.name, (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS [published_posts] FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS [u] INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS [post_scores] ON u.id = post_scores.user_id WHERE (u.status = ? OR (u.status = ? AND u.age BETWEEN ? AND ?)) AND u.id IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) ORDER BY u.name ASC OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY UNION ALL SELECT name FROM archived_users WHERE restored = ?',
+            'SELECT [u].[name], (SELECT COUNT(*) FROM posts WHERE posts.user_id = u.id AND published = ?) AS [published_posts] FROM (SELECT id, name, status, age FROM users WHERE status <> ?) AS [u] INNER JOIN (SELECT user_id, SUM(score) AS total_score FROM posts WHERE published = ? GROUP BY user_id HAVING SUM(score) > 10) AS [post_scores] ON [u].[id] = [post_scores].[user_id] WHERE ([u].[status] = ? OR ([u].[status] = ? AND [u].[age] BETWEEN ? AND ?)) AND [u].[id] IN (SELECT user_id FROM posts WHERE published = ? AND score NOT IN (?, ?)) UNION ALL SELECT name FROM archived_users WHERE restored = ? ORDER BY [name] ASC OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY',
             [1, 'banned', 1, 'active', 'pending', 20, 30, 1, 0, -1, 0],
         ],
     ]);

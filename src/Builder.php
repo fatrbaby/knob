@@ -78,7 +78,10 @@ class Builder
             $this->columns = [];
         }
 
-        $this->columns[] = $expression;
+        $this->columns[] = [
+            'type' => 'raw',
+            'sql' => $expression,
+        ];
 
         return $this;
     }
@@ -731,12 +734,15 @@ class Builder
 
     public function union(Closure|Builder $callback, bool $all = false): Builder
     {
-        $subQuery = $this->normalizeSubquery($callback);
+        $subQuery = $this->normalizeUnionSubquery($callback);
 
         $this->unions[] = [
             'all' => $all,
             'sql' => $subQuery['sql'],
             'bindings' => $subQuery['bindings'],
+            'requiresWrapper' => $subQuery['limit'] !== null
+                || $subQuery['offset'] !== null
+                || ! empty($subQuery['unions']),
         ];
 
         return $this;
@@ -900,7 +906,10 @@ class Builder
     private function aggregate(string $function, string $column): mixed
     {
         $builder = $this->clone();
-        $builder->columns = ["{$function}({$column})"];
+        $builder->columns = [[
+            'type' => 'raw',
+            'sql' => "{$function}({$builder->grammar->wrapIdentifier($column)})",
+        ]];
 
         $sql = $builder->grammar->compileSelect($builder->getComponents());
         $bindings = $builder->grammar->getBindings();
@@ -1153,6 +1162,22 @@ class Builder
         }
 
         return $query->clone()->toSqlParts();
+    }
+
+    private function normalizeUnionSubquery(Closure|Builder $query): array
+    {
+        if ($query instanceof Closure) {
+            $builder = new self($this->connection);
+            $query($builder);
+        } else {
+            $builder = $query->clone();
+        }
+
+        if ($builder->orders !== [] && $builder->limit === null && $builder->offset === null) {
+            $builder->orders = [];
+        }
+
+        return $builder->toSqlParts();
     }
 
     private function addWhereClause(string $column, mixed $operator, mixed $value, string $boolean, int $argumentCount): Builder

@@ -35,9 +35,9 @@ class SqlServerGrammar extends Grammar
         return true;
     }
 
-    protected function compileDefaultOrderForLimitOffset(): string
+    protected function compileDefaultOrderForLimitOffset(bool $compound = false): string
     {
-        return 'ORDER BY (SELECT 0)';
+        return $compound ? 'ORDER BY 1' : 'ORDER BY (SELECT 0)';
     }
 
     protected function compileDateExpression(string $type, string $column): string
@@ -58,26 +58,26 @@ class SqlServerGrammar extends Grammar
 
     public function compileUpsert(array $components): string
     {
-        $table = $this->quoteIdentifier($components['table']);
+        $table = $this->wrapIdentifier($components['table']);
         $columns = $components['columns'];
-        $quotedColumns = array_map($this->quoteIdentifier(...), $columns);
+        $quotedColumns = array_map($this->wrapIdentifier(...), $columns);
         $rowPlaceholder = $this->compileInsertRowPlaceholder(count($columns));
         $placeholders = implode(', ', array_fill(0, count($components['values']), $rowPlaceholder));
 
         $this->addBinding(array_merge(...$components['values']), 'insert');
 
         $on = implode(' AND ', array_map(
-            fn ($column) => 'target.' . $this->quoteIdentifier($column) . ' = source.' . $this->quoteIdentifier($column),
+            fn ($column) => 'target.' . $this->wrapIdentifier($column) . ' = source.' . $this->wrapIdentifier($column),
             $components['uniqueBy']
         ));
         $insertColumns = implode(', ', $quotedColumns);
-        $insertValues = implode(', ', array_map(fn ($column) => 'source.' . $this->quoteIdentifier($column), $columns));
+        $insertValues = implode(', ', array_map(fn ($column) => 'source.' . $this->wrapIdentifier($column), $columns));
 
         $sql = "MERGE INTO {$table} AS target USING (VALUES {$placeholders}) AS source (" . implode(', ', $quotedColumns) . ") ON {$on}";
 
         if (! empty($components['update'])) {
             $updates = implode(', ', array_map(
-                fn ($column) => 'target.' . $this->quoteIdentifier($column) . ' = source.' . $this->quoteIdentifier($column),
+                fn ($column) => 'target.' . $this->wrapIdentifier($column) . ' = source.' . $this->wrapIdentifier($column),
                 $components['update']
             ));
             $sql .= " WHEN MATCHED THEN UPDATE SET {$updates}";
