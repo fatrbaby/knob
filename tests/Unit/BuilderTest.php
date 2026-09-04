@@ -632,7 +632,7 @@ describe('Builder', function (): void {
 
         it('gets first result', function (): void {
             $result = Knob::table('users')->first();
-            expect($result['name'])->toBe('John');
+            expect($result)->toMatchArray(['name' => 'John']);
         });
 
         it('gets a scalar value', function (): void {
@@ -839,7 +839,7 @@ describe('Builder', function (): void {
             ]);
 
             expect($ignored)->toBe(0)
-                ->and(Knob::table('users')->where('id', 1)->first()['name'])->toBe('John');
+                ->and(Knob::table('users')->where('id', 1)->first())->toMatchArray(['name' => 'John']);
         });
 
         it('upserts records', function (): void {
@@ -860,9 +860,10 @@ describe('Builder', function (): void {
                 ],
             ], 'id', ['name', 'age']);
 
-            expect(Knob::table('users')->where('id', 1)->first()['name'])->toBe('Updated John')
-                ->and(Knob::table('users')->where('id', 1)->first()['age'])->toBe(26)
-                ->and(Knob::table('users')->where('id', 3)->first()['name'])->toBe('Alice');
+            expect(Knob::table('users')->where('id', 1)->first())
+                ->toMatchArray(['name' => 'Updated John', 'age' => 26])
+                ->and(Knob::table('users')->where('id', 3)->first())
+                ->toMatchArray(['name' => 'Alice']);
         });
 
         it('inserts a record and returns its id', function (): void {
@@ -1352,6 +1353,7 @@ describe('Builder', function (): void {
                 'update' => Knob::query()->update(['name' => 'NoTable']),
                 'delete' => Knob::query()->delete(),
                 'truncate' => Knob::query()->truncate(),
+                default => throw new InvalidArgumentException("Unsupported write operation: {$operation}"),
             })->toThrow(RuntimeException::class, $message);
         })->with([
             'update' => ['update', 'Table not set for update'],
@@ -1369,6 +1371,11 @@ describe('Builder', function (): void {
 
         it('throws when inserting empty values', function (): void {
             expect(fn () => Knob::table('users')->insert([]))->toThrow(RuntimeException::class, 'Insert values cannot be empty');
+        });
+
+        it('rejects non-string insert column names before compiling SQL', function (): void {
+            expect(fn () => Knob::table('users')->insert([0 => 'Alice']))
+                ->toThrow(InvalidArgumentException::class, 'Insert column names must be strings');
         });
 
         it('throws when inserting rows with inconsistent columns', function (): void {

@@ -2,6 +2,10 @@
 
 namespace Knob\Grammars;
 
+/**
+ * @phpstan-import-type InsertComponents from Grammar
+ * @phpstan-import-type UpsertComponents from Grammar
+ */
 class SqlServerGrammar extends Grammar
 {
     public function quoteIdentifier(string $identifier): string
@@ -51,11 +55,13 @@ class SqlServerGrammar extends Grammar
         };
     }
 
+    /** @param InsertComponents $components */
     public function compileInsertOrIgnore(array $components): string
     {
         throw new \RuntimeException('insertOrIgnore is not supported for SQL Server without conflict columns; use upsert instead');
     }
 
+    /** @param UpsertComponents $components */
     public function compileUpsert(array $components): string
     {
         $table = $this->wrapIdentifier($components['table']);

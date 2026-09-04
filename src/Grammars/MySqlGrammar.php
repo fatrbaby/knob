@@ -2,6 +2,10 @@
 
 namespace Knob\Grammars;
 
+/**
+ * @phpstan-import-type InsertComponents from Grammar
+ * @phpstan-import-type UpsertComponents from Grammar
+ */
 class MySqlGrammar extends Grammar
 {
     public function quoteIdentifier(string $identifier): string
@@ -30,11 +34,15 @@ class MySqlGrammar extends Grammar
         };
     }
 
+    /** @param InsertComponents $components */
     public function compileInsertOrIgnore(array $components): string
     {
-        return preg_replace('/^INSERT INTO /', 'INSERT IGNORE INTO ', $this->compileInsert($components), 1);
+        $sql = $this->compileInsert($components);
+
+        return 'INSERT IGNORE' . substr($sql, strlen('INSERT'));
     }
 
+    /** @param UpsertComponents $components */
     public function compileUpsert(array $components): string
     {
         if (empty($components['update'])) {

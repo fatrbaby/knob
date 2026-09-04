@@ -1,12 +1,13 @@
 PEST := ./vendor/bin/pest
 PINT := ./vendor/bin/pint
+COMPOSER := composer
 
 ifneq (,$(wildcard .env))
 	include .env
 	export
 endif
 
-.PHONY: help test unit integration smoke smoke-mysql smoke-pgsql smoke-sqlsrv pint ci
+.PHONY: help test unit integration smoke smoke-mysql smoke-pgsql smoke-sqlsrv pint format analyse validate audit ci
 
 help:
 	@printf "Available targets:\n"
@@ -17,8 +18,12 @@ help:
 	@printf "  make smoke-mysql   Run MySQL smoke test only\n"
 	@printf "  make smoke-pgsql   Run PostgreSQL smoke test only\n"
 	@printf "  make smoke-sqlsrv  Run SQL Server smoke test only\n"
-	@printf "  make pint          Run Laravel Pint\n"
-	@printf "  make ci            Run Pint and the default test suite\n"
+	@printf "  make pint          Check formatting without changing files\n"
+	@printf "  make format        Apply Laravel Pint formatting\n"
+	@printf "  make analyse       Run PHPStan Level 8 analysis\n"
+	@printf "  make validate      Validate Composer configuration\n"
+	@printf "  make audit         Audit Composer dependencies\n"
+	@printf "  make ci            Run all read-only quality checks\n"
 	@printf "\n"
 	@printf "Copy .env.example to .env to configure database smoke tests.\n"
 
@@ -41,6 +46,19 @@ smoke-sqlsrv:
 	KNOB_SMOKE_ONLY=sqlsrv $(PEST) tests/Integration
 
 pint:
+	$(COMPOSER) lint
+
+format:
 	$(PINT)
 
-ci: pint test
+analyse:
+	$(COMPOSER) analyse
+
+validate:
+	$(COMPOSER) validate --strict
+
+audit:
+	$(COMPOSER) audit
+
+ci:
+	$(COMPOSER) ci

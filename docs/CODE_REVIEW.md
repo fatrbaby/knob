@@ -2,7 +2,7 @@
 
 - 审查日期：2026-08-13
 - 审查范围：`../src`、`../tests`、Composer 配置、测试与质量工具配置
-- 当前状态：待逐项处理
+- 当前状态：P2 实现已完成，CR-018 待托管 CI 验证
 - 状态约定：`待处理`、`处理中`、`待验证`、`已完成`、`不处理`
 
 ## 验证基线
@@ -225,57 +225,87 @@
 ### CR-014：清理 PHPStan Level 8 错误
 
 - 优先级：P2
-- 状态：待处理
+- 状态：已完成
 - 位置：`../src`、`../tests`
 - 问题：当前有 134 个错误，主要是数组值类型/shape、Collection 泛型、未知 PDO 驱动、nullable 返回和测试动态属性。
 - 特别关注：`src/Knob.php:73-80` 未处理未知 PDO 驱动；`src/Grammars/MySqlGrammar.php:35` 的 `preg_replace()` 可能返回 null。
 - 建议：建立 `phpstan.neon`，为查询组件定义可复用 shape/type alias，逐步清零且不使用 baseline 掩盖问题。
 - 完成标准：`phpstan analyse src tests --level=8` 无错误。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：新增 Level 8 `phpstan.neon`；为 Builder/Grammar 查询组件、写操作组件、绑定、Collection 与测试数据定义可复用泛型和 array shape；显式处理未知 PDO 驱动、正则拆分失败、JSON 编码失败及测试中的动态属性和不完整 match。
+- 验证命令：`composer analyse` 通过，无 baseline、忽略规则或行级抑制。
+- 决策备注：PHPStan 使用 `--debug` 强制单进程执行，避免受限环境中并行分析器创建本地 TCP 服务；内存上限固定为 1 GiB。
 
 ### CR-015：统一 PHP 版本与开发依赖要求
 
 - 优先级：P2
-- 状态：待处理
-- 位置：`composer.json:25-29`、`../composer.lock`
+- 状态：已完成
+- 位置：`../composer.json`、`../README.md`、`../.github/workflows/ci.yml`
 - 问题：项目声明 PHP 8.2+，但 Pest 4.3 和 PHPUnit 12 要求 PHP 8.3+。
 - 建议：提高最低 PHP 版本到 8.3，或降级到支持 PHP 8.2 的测试工具。
 - 完成标准：CI 在声明的最低 PHP 版本上可完成 `composer install` 和测试。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：最低 PHP 版本统一为 `^8.3`，Composer 平台固定为 PHP 8.3.0 以保证依赖解析兼容最低运行版本，PHPStan 改为直接开发依赖；README 明确支持范围为 PHP 8.3–8.x。
+- 验证命令：`composer install --no-interaction`、`composer validate --strict`、`composer ci`；GitHub Actions 覆盖 PHP 8.3、8.4、8.5。
+- 决策备注：选择提高最低版本而非降级 Pest，以保持当前测试工具主版本并与 PHPUnit 12 的运行要求一致；作为库项目继续采用不提交 `composer.lock` 的策略，CI 每次验证当前约束的可解依赖集合。
 
 ### CR-016：完善 CI 质量门禁
 
 - 优先级：P2
-- 状态：待处理
+- 状态：已完成
 - 位置：`Makefile:43-46`、`../composer.json`
 - 问题：`make ci` 使用会修改文件的 `pint`，且缺少 PHPStan、Composer 校验和依赖审计；Composer 没有标准 scripts。
 - 建议：CI 使用 `pint --test`，并加入 Composer validate、PHPStan、Pest、Composer audit。
 - 完成标准：本地与 CI 使用同一组只读检查命令。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：新增 Composer `test`、`lint`、`analyse`、`ci` scripts；`make ci` 与 GitHub Actions 统一调用 `composer ci`；格式门禁改为 `pint --test`，另保留显式 `make format` 修改入口。
+- 验证命令：`composer ci` 依次完成 Composer 严格校验、Pint、PHPStan、Pest 与 Composer audit。
+- 决策备注：质量门禁全程只读，依赖审计保留联网要求；本地修复格式必须显式调用 `make format`。
 
 ### CR-017：清理测试模板并修复格式
 
 - 优先级：P2
-- 状态：待处理
+- 状态：已完成
 - 位置：`tests/Pest.php:27-43`
 - 问题：Pint 检查失败；保留了未使用的示例 expectation 和 `something()` 函数。
 - 建议：删除无用模板代码并统一格式。
 - 完成标准：`vendor/bin/pint --test` 通过。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：删除未使用的示例 expectation、`something()` 函数及无效 Feature 测试基类绑定；测试共享数据改为显式 fixture，避免动态属性。
+- 验证命令：`composer lint` 通过。
 
 ### CR-018：建立真实的跨数据库测试矩阵
 
 - 优先级：P2
-- 状态：待处理
+- 状态：待验证
 - 位置：`../tests/Integration/DatabaseSmokeTest.php`
 - 问题：默认只执行 SQLite；另外三种数据库测试均跳过，方言目前主要依赖字符串断言。
 - 建议：CI 使用 MySQL、PostgreSQL、SQL Server 服务容器，重点覆盖 upsert、日期函数、分页、事务和 union。
 - 完成标准：四种数据库的集成测试均在 CI 必跑且不能静默跳过。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：新增独立数据库 CI 作业，以服务容器提供 MySQL 8.4、PostgreSQL 17 和 SQL Server 2022，并与 SQLite 一起执行同一套真实查询流程；流程覆盖排序分页、更新、upsert、年份条件、paginate、union、事务回滚和删除。
+- 回归测试：集成测试在本地无 DSN 时仍允许跳过外部数据库；CI 设置 `KNOB_SMOKE_REQUIRED=1`，任何缺失 DSN 都直接失败，避免三种服务数据库静默跳过。
+- 验证命令：`vendor/bin/pest tests/Integration/DatabaseSmokeTest.php`；GitHub Actions `databases` 作业执行 `composer test -- tests/Integration`。
+- 决策备注：实现与本地可验证部分已完成；本机 Docker 服务不可访问，因此当前保持“待验证”，待托管 CI 中 MySQL、PostgreSQL、SQL Server 容器首次全绿后改为“已完成”。
 
 ### CR-019：补齐发布元数据和安全文档
 
 - 优先级：P2
-- 状态：待处理
+- 状态：已完成
 - 位置：`../composer.json`、`../README.md`、仓库根目录
 - 问题：声明 Apache-2.0 但缺少 `LICENSE`；README 未说明 raw API、动态标识符和动态操作符的安全边界。
 - 建议：添加许可证文件、Composer scripts、raw API 安全说明和支持矩阵。
 - 完成标准：发布包包含许可证，README 与实际接口/工具命令一致。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：新增完整 Apache License 2.0 许可证正文，并排除本机配置、环境文件和 CodeGraph socket 等非发布内容；README 同步 PHP 8.3–8.x、PDO 驱动与四数据库支持矩阵、Composer/Make 开发命令，并明确 raw SQL、`selectSub(string)`、动态标识符和动态操作符的信任边界。
+- 验证命令：`composer validate --strict`、`composer archive --format=zip --dir=/tmp --file=knob-p2-review`、`composer ci`。
+- 决策备注：结构化值继续使用参数绑定；raw 片段只能来自可信应用代码，外部输入的标识符和操作符必须先通过应用侧映射或白名单。
 
 ## 建议处理顺序
 

@@ -4,6 +4,7 @@ namespace Knob;
 
 class JoinClause
 {
+    /** @var list<array<string, mixed>> */
     private array $clauses = [];
 
     public function on(string $first, string $operator, string $second): self
@@ -46,6 +47,7 @@ class JoinClause
         return $this->addNullClause($column, 'OR', true);
     }
 
+    /** @return list<array<string, mixed>> */
     public function getClauses(): array
     {
         return $this->clauses;

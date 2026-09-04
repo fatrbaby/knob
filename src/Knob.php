@@ -18,8 +18,10 @@ final class Knob
 
     public static function using(PDO $connection): void
     {
+        $driver = self::detectDriver($connection);
+
         self::$connection = $connection;
-        self::$driver = self::detectDriver();
+        self::$driver = $driver;
         self::$savepointSequence = 0;
     }
 
@@ -134,13 +136,20 @@ final class Knob
         self::releaseSavepoint($savepoint);
     }
 
-    private static function detectDriver(): Driver
+    private static function detectDriver(PDO $connection): Driver
     {
-        return match (self::$connection->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+        $driver = $connection->getAttribute(PDO::ATTR_DRIVER_NAME);
+
+        if (! is_string($driver)) {
+            throw new RuntimeException('PDO driver name must be a string, ' . get_debug_type($driver) . ' returned');
+        }
+
+        return match ($driver) {
             'pgsql' => Driver::PostgreSQL,
             'mysql' => Driver::MySQL,
             'sqlite' => Driver::SQLite,
             'sqlsrv' => Driver::SQLServer,
+            default => throw new RuntimeException("Unsupported PDO driver: {$driver}"),
         };
     }
 }

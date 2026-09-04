@@ -7,15 +7,23 @@ use Countable;
 use IteratorAggregate;
 use Traversable;
 
+/**
+ * @phpstan-consistent-constructor
+ * @implements IteratorAggregate<array-key, mixed>
+ * @implements ArrayAccess<array-key, mixed>
+ */
 class Collection implements IteratorAggregate, Countable, ArrayAccess
 {
+    /** @var list<array{type: 'map'|'filter', callback: callable(mixed): mixed}> */
     private array $operations = [];
 
+    /** @param array<array-key, mixed> $items */
     public static function from(array $items): Collection
     {
         return new static($items);
     }
 
+    /** @param array<array-key, mixed> $items */
     public function __construct(private array $items = [])
     {
     }
@@ -126,6 +134,7 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
         return $last;
     }
 
+    /** @return array<array-key, mixed> */
     public function toArray(): array
     {
         return iterator_to_array($this->getIterator());
@@ -133,9 +142,10 @@ class Collection implements IteratorAggregate, Countable, ArrayAccess
 
     public function toJson(int $jsonFlag = 0): string
     {
-        return json_encode($this->toArray(), $jsonFlag);
+        return json_encode($this->toArray(), $jsonFlag | JSON_THROW_ON_ERROR);
     }
 
+    /** @return Traversable<array-key, mixed> */
     private function iterateItems(): Traversable
     {
         foreach ($this->items as $key => $item) {

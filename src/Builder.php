@@ -6,21 +6,37 @@ use Closure;
 use Knob\Grammars\Grammar;
 use PDO;
 
+/**
+ * @phpstan-type QueryPart array<array-key, mixed>
+ * @phpstan-type SelectComponents array{distinct: bool, columns: array<array-key, string|int|float|QueryPart>, from: array{?string, ?string, list<mixed>}, joins: list<QueryPart>, wheres: list<QueryPart>, groups: array<array-key, string|QueryPart>, havings: list<QueryPart>, orders: list<QueryPart>, limit: ?int, offset: ?int, unions: list<QueryPart>}
+ * @phpstan-type SelectSqlParts array{distinct: bool, columns: array<array-key, string|int|float|QueryPart>, from: array{?string, ?string, list<mixed>}, joins: list<QueryPart>, wheres: list<QueryPart>, groups: array<array-key, string|QueryPart>, havings: list<QueryPart>, orders: list<QueryPart>, limit: ?int, offset: ?int, unions: list<QueryPart>, sql: string, bindings: list<mixed>}
+ * @phpstan-type Subquery array{sql: string, bindings: list<mixed>}
+ * @phpstan-type InsertRow array<string, mixed>
+ * @phpstan-type InsertComponents array{table: string, columns: list<string>, values: list<list<mixed>>, uniqueBy?: list<string>, update?: list<string>}
+ */
 class Builder
 {
     private ?string $table = null;
     private ?string $alias = null;
 
     private bool $distinct = false;
+    /** @var array<array-key, string|int|float|QueryPart> */
     private array $columns = ['*'];
+    /** @var list<QueryPart> */
     private array $joins = [];
+    /** @var list<mixed> */
     private array $fromBindings = [];
+    /** @var list<QueryPart> */
     private array $wheres = [];
+    /** @var array<array-key, string|QueryPart> */
     private array $groups = [];
+    /** @var list<QueryPart> */
     private array $havings = [];
+    /** @var list<QueryPart> */
     private array $orders = [];
     private ?int $limit = null;
     private ?int $offset = null;
+    /** @var list<QueryPart> */
     private array $unions = [];
     private bool $allowFullTable = false;
 
@@ -40,10 +56,14 @@ class Builder
         return $builder;
     }
 
+    /** @param string|list<string> ...$columns */
     public function select(string|array ...$columns): Builder
     {
-        $columns = is_array($columns[0] ?? null) ? $columns[0] : $columns;
-        $this->columns = $columns;
+        if (isset($columns[0]) && is_array($columns[0])) {
+            $this->columns = $columns[0];
+        } else {
+            $this->columns = $columns;
+        }
 
         return $this;
     }
@@ -134,6 +154,7 @@ class Builder
         return $this;
     }
 
+    /** @return list<QueryPart> */
     private function normalizeJoinClauses(string|Closure $first, ?string $operator, ?string $second): array
     {
         if ($first instanceof Closure) {
@@ -222,6 +243,7 @@ class Builder
         return $this->addWhereClause($column, $operator, $value, 'OR', func_num_args());
     }
 
+    /** @param array<mixed>|Closure|Builder $values */
     public function whereIn(string $column, array|Closure|Builder $values): Builder
     {
         if (! is_array($values)) {
@@ -245,6 +267,7 @@ class Builder
         return $this;
     }
 
+    /** @param array<mixed>|Closure|Builder $values */
     public function orWhereIn(string $column, array|Closure|Builder $values): Builder
     {
         if (! is_array($values)) {
@@ -268,6 +291,7 @@ class Builder
         return $this;
     }
 
+    /** @param array<mixed>|Closure|Builder $values */
     public function whereNotIn(string $column, array|Closure|Builder $values): Builder
     {
         if (! is_array($values)) {
@@ -291,6 +315,7 @@ class Builder
         return $this;
     }
 
+    /** @param array<mixed>|Closure|Builder $values */
     public function orWhereNotIn(string $column, array|Closure|Builder $values): Builder
     {
         if (! is_array($values)) {
@@ -314,26 +339,31 @@ class Builder
         return $this;
     }
 
+    /** @param array<mixed> $values */
     public function whereBetween(string $column, array $values): Builder
     {
         return $this->addBetweenClause($column, $values, 'AND', false);
     }
 
+    /** @param array<mixed> $values */
     public function orWhereBetween(string $column, array $values): Builder
     {
         return $this->addBetweenClause($column, $values, 'OR', false);
     }
 
+    /** @param array<mixed> $values */
     public function whereNotBetween(string $column, array $values): Builder
     {
         return $this->addBetweenClause($column, $values, 'AND', true);
     }
 
+    /** @param array<mixed> $values */
     public function orWhereNotBetween(string $column, array $values): Builder
     {
         return $this->addBetweenClause($column, $values, 'OR', true);
     }
 
+    /** @param array<mixed> $values */
     private function addBetweenClause(string $column, array $values, string $boolean, bool $not): Builder
     {
         if (count($values) !== 2) {
@@ -477,6 +507,7 @@ class Builder
         return $this;
     }
 
+    /** @param array<mixed> $bindings */
     public function whereRaw(string $sql, array $bindings = []): Builder
     {
         $this->wheres[] = [
@@ -489,6 +520,7 @@ class Builder
         return $this;
     }
 
+    /** @param array<mixed> $bindings */
     public function orWhereRaw(string $sql, array $bindings = []): Builder
     {
         $this->wheres[] = [
@@ -608,14 +640,21 @@ class Builder
         return $this->addDateWhereClause('month', $column, $operator, $value, 'OR', func_num_args());
     }
 
+    /** @param string|list<string> ...$groups */
     public function groupBy(string|array ...$groups): Builder
     {
-        $groups = is_array($groups[0] ?? null) ? $groups[0] : $groups;
-        $this->groups = array_merge($this->groups, $groups);
+        if (isset($groups[0]) && is_array($groups[0])) {
+            $newGroups = $groups[0];
+        } else {
+            $newGroups = $groups;
+        }
+
+        $this->groups = array_merge($this->groups, $newGroups);
 
         return $this;
     }
 
+    /** @param array<mixed> $bindings */
     public function groupByRaw(string $sql, array $bindings = []): Builder
     {
         $this->groups[] = [
@@ -646,6 +685,7 @@ class Builder
         return $this;
     }
 
+    /** @param array<mixed> $bindings */
     public function havingRaw(string $sql, array $bindings = []): Builder
     {
         $this->havings[] = [
@@ -667,6 +707,7 @@ class Builder
         return $this;
     }
 
+    /** @param array<mixed> $bindings */
     public function orderByRaw(string $sql, array $bindings = []): Builder
     {
         $this->orders[] = [
@@ -728,13 +769,14 @@ class Builder
         return $this->union($callback, true);
     }
 
+    /** @param InsertRow|list<InsertRow> $values */
     public function insert(array $values): bool
     {
         if (empty($this->table)) {
             throw new \RuntimeException('Table not set for insert');
         }
 
-        $components = $this->prepareInsertComponents($values);
+        $components = $this->prepareInsertComponents($values, $this->table);
 
         $sql = $this->grammar->compileInsert($components);
         $bindings = $this->grammar->getBindings();
@@ -745,13 +787,14 @@ class Builder
         return $stmt->execute($bindings);
     }
 
+    /** @param InsertRow|list<InsertRow> $values */
     public function insertOrIgnore(array $values): int
     {
         if (empty($this->table)) {
             throw new \RuntimeException('Table not set for insert');
         }
 
-        $components = $this->prepareInsertComponents($values);
+        $components = $this->prepareInsertComponents($values, $this->table);
 
         $sql = $this->grammar->compileInsertOrIgnore($components);
         $bindings = $this->grammar->getBindings();
@@ -763,6 +806,7 @@ class Builder
         return $stmt->rowCount();
     }
 
+    /** @param InsertRow $values */
     public function insertGetId(array $values, ?string $sequence = null): string|false
     {
         $this->insert($values);
@@ -770,6 +814,7 @@ class Builder
         return $this->connection->lastInsertId($sequence);
     }
 
+    /** @param array<string, mixed> $values */
     public function update(array $values): int
     {
         if (empty($this->table)) {
@@ -800,13 +845,18 @@ class Builder
         return $stmt->rowCount();
     }
 
+    /**
+     * @param InsertRow|list<InsertRow> $values
+     * @param string|array<string> $uniqueBy
+     * @param array<string>|null $update
+     */
     public function upsert(array $values, string|array $uniqueBy, ?array $update = null): int
     {
         if (empty($this->table)) {
             throw new \RuntimeException('Table not set for insert');
         }
 
-        $components = $this->prepareInsertComponents($values);
+        $components = $this->prepareInsertComponents($values, $this->table);
         $uniqueBy = is_array($uniqueBy) ? array_values($uniqueBy) : [$uniqueBy];
 
         if ($uniqueBy === []) {
@@ -962,6 +1012,7 @@ class Builder
         return true;
     }
 
+    /** @return array<string, mixed>|null */
     public function first(): ?array
     {
         $builder = $this->clone();
@@ -1047,6 +1098,7 @@ class Builder
         return ! $this->exists();
     }
 
+    /** @return array{items: array<array-key, mixed>, total: int, per_page: int, current_page: int, last_page: int} */
     public function paginate(int $perPage = 15, int $page = 1): array
     {
         if ($perPage < 1) {
@@ -1093,6 +1145,7 @@ class Builder
         return (int) $stmt->fetchColumn();
     }
 
+    /** @return SelectComponents */
     private function getComponents(): array
     {
         return [
@@ -1110,6 +1163,7 @@ class Builder
         ];
     }
 
+    /** @return SelectSqlParts */
     public function toSqlParts(): array
     {
         $components = $this->getComponents();
@@ -1132,6 +1186,7 @@ class Builder
         return $this->interpolateBindings($query['sql'], $query['bindings']);
     }
 
+    /** @param list<mixed> $bindings */
     private function interpolateBindings(string $sql, array $bindings): string
     {
         foreach ($bindings as $binding) {
@@ -1165,6 +1220,7 @@ class Builder
         return $quoted;
     }
 
+    /** @return Subquery */
     private function normalizeSubquery(Closure|Builder|string $query): array
     {
         if (is_string($query)) {
@@ -1184,6 +1240,7 @@ class Builder
         return $query->clone()->toSqlParts();
     }
 
+    /** @return SelectSqlParts */
     private function normalizeUnionSubquery(Closure|Builder $query): array
     {
         if ($query instanceof Closure) {
@@ -1202,7 +1259,7 @@ class Builder
 
     private function resultColumnName(string $column): string
     {
-        $aliasParts = preg_split('/\s+as\s+/i', trim($column), 2);
+        $aliasParts = preg_split('/\s+as\s+/i', trim($column), 2) ?: [trim($column)];
 
         if (isset($aliasParts[1])) {
             return $aliasParts[1];
@@ -1213,6 +1270,7 @@ class Builder
         return $qualifiedParts[array_key_last($qualifiedParts)];
     }
 
+    /** @return QueryPart|null */
     private function selectedRawColumn(string $column): ?array
     {
         foreach ($this->columns as $selected) {
@@ -1316,7 +1374,11 @@ class Builder
         return $this;
     }
 
-    private function prepareInsertComponents(array $values): array
+    /**
+     * @param InsertRow|list<InsertRow> $values
+     * @return InsertComponents
+     */
+    private function prepareInsertComponents(array $values, string $table): array
     {
         if ($values === []) {
             throw new \RuntimeException('Insert values cannot be empty');
@@ -1329,6 +1391,12 @@ class Builder
             throw new \RuntimeException('Insert values cannot be empty');
         }
 
+        foreach ($columns as $column) {
+            if (! is_string($column)) {
+                throw new \InvalidArgumentException('Insert column names must be strings');
+            }
+        }
+
         foreach ($rows as $row) {
             if (array_diff($columns, array_keys($row)) !== [] || array_diff(array_keys($row), $columns) !== []) {
                 throw new \RuntimeException('Insert rows must have the same columns');
@@ -1336,7 +1404,7 @@ class Builder
         }
 
         return [
-            'table' => $this->table,
+            'table' => $table,
             'columns' => $columns,
             'values' => array_map(fn ($row) => array_map(fn ($column) => $row[$column], $columns), $rows),
         ];

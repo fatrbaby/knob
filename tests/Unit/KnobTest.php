@@ -2,6 +2,7 @@
 
 use Knob\Driver;
 use Knob\Knob;
+use PHPUnit\Framework\Assert;
 
 final class TransactionPdoStub extends PDO
 {
@@ -11,6 +12,7 @@ final class TransactionPdoStub extends PDO
     public bool $transactionActive = false;
     public bool $commitThrows = false;
     public bool $rollbackThrows = false;
+    /** @var list<string> */
     public array $statements = [];
 
     public function __construct(public string $driverName = 'sqlite')
@@ -60,7 +62,7 @@ final class TransactionPdoStub extends PDO
         return $this->rollbackResult;
     }
 
-    public function exec(string $statement): int|false
+    public function exec(string $statement): int
     {
         $this->statements[] = $statement;
 
@@ -79,6 +81,11 @@ describe('Knob facade', function (): void {
 
     it('detects the active PDO driver', function (): void {
         expect(Knob::getDriver())->toBe(Driver::SQLite);
+    });
+
+    it('rejects unsupported PDO drivers with a clear exception', function (): void {
+        expect(fn () => Knob::using(new TransactionPdoStub('odbc')))
+            ->toThrow(RuntimeException::class, 'Unsupported PDO driver: odbc');
     });
 
     it('rolls back failed transactions', function (): void {
@@ -161,7 +168,7 @@ describe('Knob facade', function (): void {
 
         try {
             Knob::transaction(fn () => throw new LogicException('callback failed'));
-            $this->fail('Expected transaction failure');
+            Assert::fail('Expected transaction failure');
         } catch (RuntimeException $exception) {
             expect($exception->getMessage())->toContain('callback failed')
                 ->toContain('rollback failed')

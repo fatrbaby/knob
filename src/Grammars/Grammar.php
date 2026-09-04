@@ -4,8 +4,17 @@ namespace Knob\Grammars;
 
 use BackedEnum;
 
+/**
+ * @phpstan-type QueryPart array<array-key, mixed>
+ * @phpstan-type SelectComponents array{distinct: bool, columns: array<array-key, string|int|float|QueryPart>, from: array{?string, ?string, list<mixed>}, joins: list<QueryPart>, wheres: list<QueryPart>, groups: array<array-key, string|QueryPart>, havings: list<QueryPart>, orders: list<QueryPart>, limit: ?int, offset: ?int, unions: list<QueryPart>}
+ * @phpstan-type InsertComponents array{table: string, columns: list<string>, values: list<list<mixed>>, uniqueBy?: list<string>, update?: list<string>}
+ * @phpstan-type UpsertComponents array{table: string, columns: list<string>, values: list<list<mixed>>, uniqueBy: list<string>, update: list<string>}
+ * @phpstan-type UpdateComponents array{table: string, values: array<string, mixed>, wheres: list<QueryPart>}
+ * @phpstan-type DeleteComponents array{table: string, wheres: list<QueryPart>}
+ */
 abstract class Grammar
 {
+    /** @var array<string, list<mixed>> */
     protected array $bindings = [
         'select' => [],
         'from' => [],
@@ -21,12 +30,13 @@ abstract class Grammar
 
     abstract public function quoteIdentifier(string $identifier): string;
 
+    /** @param SelectComponents $components */
     public function compileSelect(array $components): string
     {
         $sql = [];
 
         if (! empty($components['columns'])) {
-            $select = ($components['distinct'] ?? false) ? 'SELECT DISTINCT ' : 'SELECT ';
+            $select = $components['distinct'] ? 'SELECT DISTINCT ' : 'SELECT ';
             $sql[] = $select . $this->compileColumns($components['columns']);
         }
 
@@ -69,6 +79,7 @@ abstract class Grammar
         return implode(' ', $sql);
     }
 
+    /** @param array<array-key, string|int|float|QueryPart> $columns */
     protected function compileColumns(array $columns): string
     {
         return implode(', ', array_map(function ($column) {
@@ -100,9 +111,10 @@ abstract class Grammar
         }, $columns));
     }
 
+    /** @param array{?string, ?string, list<mixed>} $from */
     protected function compileFrom(array $from): string
     {
-        [$table, $alias, $bindings] = array_pad($from, 3, []);
+        [$table, $alias, $bindings] = $from;
 
         if (! $table) {
             return '';
@@ -120,6 +132,7 @@ abstract class Grammar
         return $tableSql;
     }
 
+    /** @param list<QueryPart> $joins */
     protected function compileJoins(array $joins): string
     {
         $sql = [];
@@ -143,6 +156,7 @@ abstract class Grammar
         return implode(' ', $sql);
     }
 
+    /** @param QueryPart $join */
     protected function compileJoinTable(array $join): string
     {
         $table = $join['table'];
@@ -156,6 +170,7 @@ abstract class Grammar
         return $tableSql;
     }
 
+    /** @param list<QueryPart> $clauses */
     protected function compileJoinClauses(array $clauses): string
     {
         $compiled = [];
@@ -175,6 +190,7 @@ abstract class Grammar
         return implode(' ', $compiled);
     }
 
+    /** @param QueryPart $clause */
     protected function compileJoinClause(array $clause): string
     {
         if (array_is_list($clause)) {
@@ -193,6 +209,7 @@ abstract class Grammar
         };
     }
 
+    /** @param QueryPart $clause */
     protected function compileJoinOnClause(array $clause): string
     {
         ['first' => $first, 'operator' => $operator, 'second' => $second] = $clause;
@@ -200,6 +217,7 @@ abstract class Grammar
         return $this->wrapIdentifier($first) . " {$operator} " . $this->wrapIdentifier($second);
     }
 
+    /** @param QueryPart $clause */
     protected function compileJoinBasicClause(array $clause): string
     {
         ['column' => $column, 'operator' => $operator, 'value' => $value] = $clause;
@@ -209,6 +227,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . " {$operator} ?";
     }
 
+    /** @param QueryPart $clause */
     protected function compileJoinNullClause(array $clause): string
     {
         $column = $clause['column'];
@@ -217,6 +236,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . ($not ? ' IS NOT NULL' : ' IS NULL');
     }
 
+    /** @param list<QueryPart> $wheres */
     protected function compileWheres(array $wheres): string
     {
         $conditions = [];
@@ -236,6 +256,7 @@ abstract class Grammar
         return implode(' ', $conditions);
     }
 
+    /** @param QueryPart $where */
     protected function compileWhere(array $where): string
     {
         $type = $where['type'];
@@ -261,6 +282,7 @@ abstract class Grammar
         };
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereBasic(array $where): string
     {
         ['column' => $column, 'operator' => $operator, 'value' => $value] = $where;
@@ -271,6 +293,7 @@ abstract class Grammar
         return $sql;
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereIn(array $where): string
     {
         $column = $where['column'];
@@ -286,6 +309,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . " IN ({$placeholders})";
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereNotIn(array $where): string
     {
         $column = $where['column'];
@@ -301,16 +325,19 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . " NOT IN ({$placeholders})";
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereInSub(array $where): string
     {
         return $this->compileWhereSubqueryList($where, false);
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereNotInSub(array $where): string
     {
         return $this->compileWhereSubqueryList($where, true);
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereBetween(array $where): string
     {
         $column = $where['column'];
@@ -325,6 +352,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . " {$op} ? AND ?";
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereLike(array $where): string
     {
         $column = $where['column'];
@@ -338,6 +366,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . " {$op} ?";
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereColumn(array $where): string
     {
         ['first' => $first, 'operator' => $operator, 'second' => $second] = $where;
@@ -345,6 +374,7 @@ abstract class Grammar
         return $this->wrapIdentifier($first) . " {$operator} " . $this->wrapIdentifier($second);
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereNull(array $where): string
     {
         $column = $where['column'];
@@ -352,6 +382,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . ' IS NULL';
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereNotNull(array $where): string
     {
         $column = $where['column'];
@@ -359,6 +390,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . ' IS NOT NULL';
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereSub(array $where): string
     {
         $column = $where['column'];
@@ -371,6 +403,7 @@ abstract class Grammar
         return $sql;
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereExists(array $where): string
     {
         $query = $where['query'];
@@ -383,6 +416,7 @@ abstract class Grammar
         return $sql;
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereGroup(array $where): string
     {
         $wheres = $where['wheres'];
@@ -407,6 +441,7 @@ abstract class Grammar
         return '(' . implode(' ', $parts) . ')';
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereNot(array $where): string
     {
         $group = $this->compileWhereGroup($where);
@@ -414,6 +449,7 @@ abstract class Grammar
         return $group === '' ? '' : "NOT {$group}";
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereDateBased(array $where): string
     {
         ['type' => $type, 'column' => $column, 'operator' => $operator, 'value' => $value] = $where;
@@ -423,6 +459,7 @@ abstract class Grammar
         return $this->compileDateExpression($type, $this->wrapIdentifier($column)) . " {$operator} ?";
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereRaw(array $where): string
     {
         $sql = $where['sql'];
@@ -434,6 +471,7 @@ abstract class Grammar
         return $sql;
     }
 
+    /** @param QueryPart $where */
     protected function compileWhereSubqueryList(array $where, bool $not): string
     {
         $column = $where['column'];
@@ -445,6 +483,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . " {$operator} ({$query['sql']})";
     }
 
+    /** @param list<mixed> $bindings */
     protected function addSubqueryBindings(array $bindings, string $type): void
     {
         foreach ($bindings as $value) {
@@ -452,6 +491,7 @@ abstract class Grammar
         }
     }
 
+    /** @param array<array-key, string|QueryPart> $groups */
     protected function compileGroups(array $groups): string
     {
         return implode(', ', array_map(function ($group) {
@@ -467,6 +507,7 @@ abstract class Grammar
         }, $groups));
     }
 
+    /** @param list<QueryPart> $havings */
     protected function compileHavings(array $havings): string
     {
         $conditions = [];
@@ -478,6 +519,7 @@ abstract class Grammar
         return implode(' AND ', $conditions);
     }
 
+    /** @param QueryPart $having */
     protected function compileHaving(array $having): string
     {
         $type = $having['type'] ?? 'basic';
@@ -489,6 +531,7 @@ abstract class Grammar
         };
     }
 
+    /** @param QueryPart $having */
     protected function compileHavingBasic(array $having): string
     {
         ['column' => $column, 'operator' => $operator, 'value' => $value] = $having;
@@ -498,6 +541,7 @@ abstract class Grammar
         return $this->wrapIdentifier($column) . " {$operator} ?";
     }
 
+    /** @param QueryPart $having */
     protected function compileHavingRaw(array $having): string
     {
         foreach ($having['bindings'] ?? [] as $binding) {
@@ -507,6 +551,7 @@ abstract class Grammar
         return $having['sql'];
     }
 
+    /** @param list<QueryPart> $orders */
     protected function compileOrders(array $orders, bool $compound = false): string
     {
         return 'ORDER BY ' . implode(', ', array_map(function ($order) use ($compound) {
@@ -528,7 +573,8 @@ abstract class Grammar
 
     protected function compoundOrderIdentifier(string $identifier): string
     {
-        $parts = explode('.', preg_split('/\s+as\s+/i', trim($identifier), 2)[0]);
+        $aliasParts = preg_split('/\s+as\s+/i', trim($identifier), 2) ?: [trim($identifier)];
+        $parts = explode('.', $aliasParts[0]);
 
         return $this->wrapIdentifier($parts[array_key_last($parts)]);
     }
@@ -566,6 +612,7 @@ abstract class Grammar
         ]));
     }
 
+    /** @param list<QueryPart> $unions */
     protected function compileUnions(array $unions): string
     {
         $sql = [];
@@ -586,6 +633,7 @@ abstract class Grammar
         return implode(' ', $sql);
     }
 
+    /** @param InsertComponents $components */
     public function compileInsert(array $components): string
     {
         $table = $this->wrapIdentifier($components['table']);
@@ -600,11 +648,13 @@ abstract class Grammar
         return "INSERT INTO {$table} ({$columns}) VALUES {$placeholders}";
     }
 
+    /** @param InsertComponents $components */
     public function compileInsertOrIgnore(array $components): string
     {
         return $this->compileInsert($components) . ' ON CONFLICT DO NOTHING';
     }
 
+    /** @param UpsertComponents $components */
     public function compileUpsert(array $components): string
     {
         if (empty($components['update'])) {
@@ -624,6 +674,7 @@ abstract class Grammar
         return "{$sql} ON CONFLICT ({$uniqueBy}) DO UPDATE SET {$updates}";
     }
 
+    /** @param list<list<mixed>> $values */
     protected function compileInsertPlaceholders(array $values): string
     {
         $rowPlaceholder = $this->compileInsertRowPlaceholder(count($values[0]));
@@ -636,6 +687,7 @@ abstract class Grammar
         return '(' . implode(', ', array_fill(0, $columnCount, '?')) . ')';
     }
 
+    /** @param UpdateComponents $components */
     public function compileUpdate(array $components): string
     {
         $this->bindings['update'] = [];
@@ -658,6 +710,7 @@ abstract class Grammar
         return $sql;
     }
 
+    /** @param DeleteComponents $components */
     public function compileDelete(array $components): string
     {
         $this->bindings['where'] = [];
@@ -678,6 +731,7 @@ abstract class Grammar
         return 'TRUNCATE ' . $this->wrapIdentifier($table);
     }
 
+    /** @return list<mixed> */
     public function getBindings(): array
     {
         return array_merge(
@@ -694,6 +748,7 @@ abstract class Grammar
         );
     }
 
+    /** @return list<mixed> */
     public function getUpdateBindings(): array
     {
         return array_merge(
@@ -702,6 +757,7 @@ abstract class Grammar
         );
     }
 
+    /** @return list<mixed> */
     public function getDeleteBindings(): array
     {
         return $this->bindings['where'];
@@ -736,7 +792,7 @@ abstract class Grammar
 
     public function wrapIdentifier(string $identifier): string
     {
-        $parts = preg_split('/\s+as\s+/i', trim($identifier), 2);
+        $parts = preg_split('/\s+as\s+/i', trim($identifier), 2) ?: [trim($identifier)];
         $wrapped = implode('.', array_map(
             fn (string $part): string => $part === '*' ? '*' : $this->quoteIdentifier($part),
             explode('.', $parts[0])

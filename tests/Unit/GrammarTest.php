@@ -6,9 +6,14 @@ use Knob\Grammars\PostgresGrammar;
 use Knob\Grammars\SqliteGrammar;
 use Knob\Grammars\SqlServerGrammar;
 
+/**
+ * @param array{distinct?: bool, columns?: array<array-key, string|int|float|array<array-key, mixed>>, from?: array{?string, ?string, list<mixed>}, joins?: list<array<array-key, mixed>>, wheres?: list<array<array-key, mixed>>, groups?: array<array-key, string|array<array-key, mixed>>, havings?: list<array<array-key, mixed>>, orders?: list<array<array-key, mixed>>, limit?: ?int, offset?: ?int, unions?: list<array<array-key, mixed>>} $overrides
+ * @return array{distinct: bool, columns: array<array-key, string|int|float|array<array-key, mixed>>, from: array{?string, ?string, list<mixed>}, joins: list<array<array-key, mixed>>, wheres: list<array<array-key, mixed>>, groups: array<array-key, string|array<array-key, mixed>>, havings: list<array<array-key, mixed>>, orders: list<array<array-key, mixed>>, limit: ?int, offset: ?int, unions: list<array<array-key, mixed>>}
+ */
 function selectComponents(array $overrides = []): array
 {
     return [
+        'distinct' => false,
         'columns' => ['id', 'name'],
         'from' => ['users', null, []],
         'joins' => [],

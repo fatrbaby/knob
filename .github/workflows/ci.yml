@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.3', '8.4', '8.5']
+
+    name: PHP ${{ matrix.php-version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: pdo_sqlite
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run quality gates
+        run: composer ci
+
+  databases:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: knob
+          MYSQL_ROOT_PASSWORD: knob-secret
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --password=knob-secret"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: knob
+          POSTGRES_USER: knob
+          POSTGRES_PASSWORD: knob-secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready --username=knob --dbname=knob"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Knob_ci_2026!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Knob_ci_2026!' -Q 'SELECT 1'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      KNOB_SMOKE_REQUIRED: '1'
+      KNOB_MYSQL_DSN: mysql:host=127.0.0.1;port=3306;dbname=knob;charset=utf8mb4
+      KNOB_MYSQL_USER: root
+      KNOB_MYSQL_PASSWORD: knob-secret
+      KNOB_PGSQL_DSN: pgsql:host=127.0.0.1;port=5432;dbname=knob
+      KNOB_PGSQL_USER: knob
+      KNOB_PGSQL_PASSWORD: knob-secret
+      KNOB_SQLSRV_DSN: sqlsrv:Server=127.0.0.1,1433;Database=master;TrustServerCertificate=1
+      KNOB_SQLSRV_USER: sa
+      KNOB_SQLSRV_PASSWORD: Knob_ci_2026!
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, pdo_pgsql, pdo_sqlsrv
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run all database smoke tests
+        run: composer test -- tests/Integration

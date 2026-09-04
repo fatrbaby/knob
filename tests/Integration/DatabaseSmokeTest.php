@@ -1,7 +1,9 @@
 <?php
 
 use Knob\Knob;
+use PHPUnit\Framework\Assert;
 
+/** @return array{dsn: string, user: string|null, password: string|null, driver: string}|null */
 function smokeDatabaseConfig(string $driver): ?array
 {
     if ($driver === 'sqlite') {
@@ -31,10 +33,11 @@ function smokeDatabaseConfig(string $driver): ?array
 function smokeCreateTableSql(string $driver): string
 {
     return match ($driver) {
-        'sqlite' => 'CREATE TABLE knob_smoke_users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, status TEXT, age INTEGER)',
-        'mysql' => 'CREATE TABLE knob_smoke_users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), status VARCHAR(50), age INT)',
-        'pgsql' => 'CREATE TABLE knob_smoke_users (id SERIAL PRIMARY KEY, name VARCHAR(255), status VARCHAR(50), age INT)',
-        'sqlsrv' => 'CREATE TABLE knob_smoke_users (id INT IDENTITY(1,1) PRIMARY KEY, name NVARCHAR(255), status NVARCHAR(50), age INT)',
+        'sqlite' => 'CREATE TABLE knob_smoke_users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, status TEXT, age INTEGER, created_at TEXT)',
+        'mysql' => 'CREATE TABLE knob_smoke_users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), status VARCHAR(50), age INT, created_at DATETIME)',
+        'pgsql' => 'CREATE TABLE knob_smoke_users (id SERIAL PRIMARY KEY, name VARCHAR(255), status VARCHAR(50), age INT, created_at TIMESTAMP)',
+        'sqlsrv' => 'CREATE TABLE knob_smoke_users (id INT IDENTITY(1,1) PRIMARY KEY, name NVARCHAR(255), status NVARCHAR(50), age INT, created_at DATETIME2)',
+        default => throw new InvalidArgumentException("Unsupported smoke database driver: {$driver}"),
     };
 }
 
@@ -44,6 +47,7 @@ function smokeDropTableSql(string $driver): string
         'sqlite' => 'DROP TABLE IF EXISTS knob_smoke_users',
         'mysql', 'pgsql' => 'DROP TABLE IF EXISTS knob_smoke_users',
         'sqlsrv' => "IF OBJECT_ID('knob_smoke_users', 'U') IS NOT NULL DROP TABLE knob_smoke_users",
+        default => throw new InvalidArgumentException("Unsupported smoke database driver: {$driver}"),
     };
 }
 
@@ -52,15 +56,20 @@ describe('Database smoke tests', function (): void {
         $only = getenv('KNOB_SMOKE_ONLY');
 
         if ($only && $only !== $driver) {
-            $this->markTestSkipped("KNOB_SMOKE_ONLY={$only} selected.");
+            Assert::markTestSkipped("KNOB_SMOKE_ONLY={$only} selected.");
         }
 
         $config = smokeDatabaseConfig($driver);
 
         if ($config === null) {
             $prefix = 'KNOB_' . strtoupper($driver);
+            $message = "Set {$prefix}_DSN to run this integration smoke test.";
 
-            $this->markTestSkipped("Set {$prefix}_DSN to run this integration smoke test.");
+            if (getenv('KNOB_SMOKE_REQUIRED') === '1') {
+                Assert::fail($message);
+            }
+
+            Assert::markTestSkipped($message);
         }
 
         $pdo = new PDO($config['dsn'], $config['user'], $config['password']);
@@ -72,9 +81,9 @@ describe('Database smoke tests', function (): void {
 
         try {
             Knob::table('knob_smoke_users')->insert([
-                ['name' => 'Alice', 'status' => 'active', 'age' => 30],
-                ['name' => 'Bob', 'status' => 'pending', 'age' => 20],
-                ['name' => 'Carol', 'status' => 'active', 'age' => 25],
+                ['name' => 'Alice', 'status' => 'active', 'age' => 30, 'created_at' => '2026-01-15 10:00:00'],
+                ['name' => 'Bob', 'status' => 'pending', 'age' => 20, 'created_at' => '2025-06-01 11:30:00'],
+                ['name' => 'Carol', 'status' => 'active', 'age' => 25, 'created_at' => '2026-09-04 08:45:00'],
             ]);
 
             $active = Knob::table('knob_smoke_users')
@@ -88,9 +97,37 @@ describe('Database smoke tests', function (): void {
 
             expect($active)->toBe(['Alice'])
                 ->and(Knob::table('knob_smoke_users')->where('name', 'Bob')->update(['status' => 'active']))->toBe(1)
-                ->and(Knob::table('knob_smoke_users')->where('status', 'active')->count())->toBe(3)
+                ->and(Knob::table('knob_smoke_users')->where('status', 'active')->count())->toBe(3);
+
+            Knob::table('knob_smoke_users')->upsert([
+                'id' => 1,
+                'name' => 'Alice Updated',
+                'status' => 'active',
+                'age' => 31,
+                'created_at' => '2026-01-15 10:00:00',
+            ], 'id', ['name', 'age']);
+
+            $page = Knob::table('knob_smoke_users')->orderBy('id')->paginate(2, 2);
+            $union = Knob::table('knob_smoke_users')
+                ->select('name')
+                ->where('id', 1)
+                ->unionAll(Knob::table('knob_smoke_users')->select('name')->where('id', 2))
+                ->orderBy('name')
+                ->pluck('name')
+                ->toArray();
+
+            expect(Knob::table('knob_smoke_users')->where('id', 1)->value('name'))->toBe('Alice Updated')
+                ->and(Knob::table('knob_smoke_users')->whereYear('created_at', 2026)->count())->toBe(2)
+                ->and($page)->toMatchArray(['total' => 3, 'current_page' => 2, 'last_page' => 2])
+                ->and($page['items'])->toHaveCount(1)
+                ->and($union)->toBe(['Alice Updated', 'Bob'])
                 ->and(fn () => Knob::transaction(function (): void {
-                    Knob::table('knob_smoke_users')->insert(['name' => 'Dave', 'status' => 'active', 'age' => 40]);
+                    Knob::table('knob_smoke_users')->insert([
+                        'name' => 'Dave',
+                        'status' => 'active',
+                        'age' => 40,
+                        'created_at' => '2026-12-31 23:59:59',
+                    ]);
 
                     throw new RuntimeException('rollback');
                 }))->toThrow(RuntimeException::class, 'rollback')

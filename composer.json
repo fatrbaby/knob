@@ -20,17 +20,59 @@
     }
   ],
   "require": {
-    "php": ">= 8.2",
+    "php": "^8.3",
     "ext-pdo": "*"
   },
   "require-dev": {
     "pestphp/pest": "^4.3",
+    "phpstan/phpstan": "^2.2",
     "laravel/pint": "*",
     "rector/rector": "^2.6"
   },
   "config": {
+    "platform": {
+      "php": "8.3.0"
+    },
     "allow-plugins": {
       "pestphp/pest-plugin": true
     }
+  },
+  "archive": {
+    "exclude": [
+      "/.claude",
+      "/.codegraph",
+      "/.env",
+      "/.env.example",
+      "/.gitattributes",
+      "/.github",
+      "/.gitignore",
+      "/.idea",
+      "/.phpactor.json",
+      "/.worktrees",
+      "/CLAUDE.md",
+      "/Makefile",
+      "/SKILL.md",
+      "/composer.lock",
+      "/docs",
+      "/openspec",
+      "/phpstan.neon",
+      "/phpunit.xml",
+      "/pint.json",
+      "/rector.php",
+      "/tests",
+      "/vendor"
+    ]
+  },
+  "scripts": {
+    "test": "pest",
+    "lint": "pint --test",
+    "analyse": "phpstan analyse --no-progress --debug --memory-limit=1G",
+    "ci": [
+      "@composer validate --strict",
+      "@lint",
+      "@analyse",
+      "@test",
+      "@composer audit"
+    ]
   }
 }
