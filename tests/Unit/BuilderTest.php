@@ -47,6 +47,27 @@ describe('Builder', function (): void {
             $sql = Knob::table('users')->selectSub('SELECT 1', 'one')->toSqlParts();
             expect($sql['sql'])->toContain('(SELECT 1) AS "one"');
         });
+
+        it('omits AS when selectSub has no alias', function (string|Closure|\Knob\Builder $subquery): void {
+            $sql = Knob::table('users')
+                ->select('name')
+                ->selectSub($subquery)
+                ->toSqlParts()['sql'];
+
+            expect($sql)->toBe('SELECT "name", (SELECT 1) FROM "users"');
+        })->with([
+            'raw SQL' => ['SELECT 1'],
+            'closure' => [fn () => fn ($query) => $query->selectRaw('1')],
+        ]);
+
+        it('omits AS when a reusable selectSub builder has no alias', function (): void {
+            $sql = Knob::table('users')
+                ->select('name')
+                ->selectSub(Knob::query()->selectRaw('1'))
+                ->toSqlParts()['sql'];
+
+            expect($sql)->toBe('SELECT "name", (SELECT 1) FROM "users"');
+        });
     });
 
     describe('where', function (): void {
@@ -178,6 +199,20 @@ describe('Builder', function (): void {
             $sql = Knob::table('users')->where(fn ($q) => $q->where('a', 1)->orWhere('b', 2))->toSqlParts();
             expect($sql['sql'])->toContain('("a" = ? OR "b" = ?)');
         });
+
+        it('ignores empty condition groups without changing query state', function (Closure $apply): void {
+            $query = Knob::table('users')->where('status', 'active');
+            $before = $query->toSqlParts();
+
+            $apply($query);
+
+            expect($query->toSqlParts())->toBe($before);
+        })->with([
+            'where' => [fn ($query) => $query->where(fn () => null)],
+            'orWhere' => [fn ($query) => $query->orWhere(fn () => null)],
+            'whereNot' => [fn ($query) => $query->whereNot(fn () => null)],
+            'orWhereNot' => [fn ($query) => $query->orWhereNot(fn () => null)],
+        ]);
     });
 
     describe('whereIn', function (): void {
@@ -251,6 +286,33 @@ describe('Builder', function (): void {
             expect($sql['sql'])->toContain('"status" = ? OR "age" BETWEEN ? AND ? OR "score" NOT BETWEEN ? AND ?')
                 ->and($sql['bindings'])->toBe(['active', 18, 30, 50, 80]);
         });
+
+        it('normalizes associative BETWEEN values', function (): void {
+            $sql = Knob::table('users')
+                ->whereBetween('age', ['minimum' => 18, 'maximum' => 30])
+                ->toSqlParts();
+
+            expect($sql['sql'])->toContain('"age" BETWEEN ? AND ?')
+                ->and($sql['bindings'])->toBe([18, 30]);
+        });
+
+        it('rejects BETWEEN predicates unless exactly two values are provided', function (string $method, array $values): void {
+            $query = Knob::table('users')->where('status', 'active');
+            $before = $query->toSqlParts();
+
+            expect(fn () => $query->{$method}('age', $values))
+                ->toThrow(InvalidArgumentException::class, 'BETWEEN requires exactly two values');
+            expect($query->toSqlParts())->toBe($before);
+        })->with([
+            'whereBetween too few' => ['whereBetween', [18]],
+            'whereBetween too many' => ['whereBetween', [18, 30, 40]],
+            'orWhereBetween too few' => ['orWhereBetween', [18]],
+            'orWhereBetween too many' => ['orWhereBetween', [18, 30, 40]],
+            'whereNotBetween too few' => ['whereNotBetween', [18]],
+            'whereNotBetween too many' => ['whereNotBetween', [18, 30, 40]],
+            'orWhereNotBetween too few' => ['orWhereNotBetween', [18]],
+            'orWhereNotBetween too many' => ['orWhereNotBetween', [18, 30, 40]],
+        ]);
 
         it('generates common predicates inside grouped where clauses', function (): void {
             $sql = Knob::table('users')
@@ -581,6 +643,19 @@ describe('Builder', function (): void {
                 ->and($missing)->toBeNull();
         });
 
+        it('gets qualified and explicitly aliased scalar values', function (): void {
+            expect(Knob::table('users', 'u')->value('u.name'))->toBe('John')
+                ->and(Knob::table('users')->value('name AS display_name'))->toBe('John');
+        });
+
+        it('reads a selected raw expression by its alias', function (): void {
+            $value = Knob::table('users')
+                ->selectRaw('UPPER(name) AS upper_name')
+                ->value('upper_name');
+
+            expect($value)->toBe('JOHN');
+        });
+
         it('keeps false scalar values distinct from missing rows', function (): void {
             $pdo = Knob::getConnection();
             $pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, false);
@@ -619,6 +694,46 @@ describe('Builder', function (): void {
             expect($names)->toBe([1 => 'John', 2 => 'Jane']);
         });
 
+        it('plucks qualified columns and keys', function (): void {
+            $names = Knob::table('users', 'u')->pluck('u.name', 'u.id')->toArray();
+
+            expect($names)->toBe([1 => 'John', 2 => 'Jane']);
+        });
+
+        it('plucks an explicitly aliased column', function (): void {
+            expect(Knob::table('users')->pluck('name AS display_name')->toArray())
+                ->toBe(['John', 'Jane']);
+        });
+
+        it('plucks a selected raw expression by its alias', function (): void {
+            $names = Knob::table('users')
+                ->selectRaw('UPPER(name) AS upper_name')
+                ->pluck('upper_name')
+                ->toArray();
+
+            expect($names)->toBe(['JOHN', 'JANE']);
+        });
+
+        it('plucks a selected raw expression with a structured key', function (): void {
+            $names = Knob::table('users')
+                ->selectRaw('UPPER(name) AS upper_name')
+                ->orderBy('id')
+                ->pluck('upper_name', 'id')
+                ->toArray();
+
+            expect($names)->toBe([1 => 'JOHN', 2 => 'JANE']);
+        });
+
+        it('plucks a structured value with a selected raw expression key', function (): void {
+            $names = Knob::table('users')
+                ->select('id')
+                ->selectRaw('LOWER(name) AS name_key')
+                ->pluck('id', 'name_key')
+                ->toArray();
+
+            expect($names)->toBe(['john' => 1, 'jane' => 2]);
+        });
+
         it('gets distinct values', function (): void {
             $values = Knob::table('users')->distinct()->pluck('status')->toArray();
             expect($values)->toBe(['active']);
@@ -650,6 +765,57 @@ describe('Builder', function (): void {
                 ->and($page['items'])->toHaveCount(1)
                 ->and($page['items'][0]['name'])->toBe('Jane');
         });
+
+        it('counts grouped rows when paginating', function (): void {
+            Knob::table('users')->where('name', 'Jane')->update(['status' => 'pending']);
+
+            $page = Knob::table('users')
+                ->select('status')
+                ->groupBy('status')
+                ->orderBy('status')
+                ->paginate(1, 1);
+
+            expect($page['total'])->toBe(2);
+        });
+
+        it('counts rows after having filters when paginating', function (): void {
+            Knob::table('users')->where('name', 'Jane')->update(['status' => 'pending']);
+
+            $page = Knob::table('users')
+                ->select('status')
+                ->selectRaw('COUNT(*) AS user_count')
+                ->groupBy('status')
+                ->havingRaw('status != ?', ['blocked'])
+                ->paginate(1, 1);
+
+            expect($page['total'])->toBe(2);
+        });
+
+        it('counts distinct rows when paginating', function (): void {
+            $page = Knob::table('users')->select('status')->distinct()->paginate();
+
+            expect($page['total'])->toBe(1);
+        });
+
+        it('counts all union rows when paginating', function (): void {
+            $page = Knob::table('users')
+                ->select('name')
+                ->where('name', 'John')
+                ->unionAll(fn ($query) => $query->from('users')->select('name')->where('name', 'Jane'))
+                ->paginate(1, 1);
+
+            expect($page['total'])->toBe(2);
+        });
+
+        it('rejects invalid pagination parameters', function (int $perPage, int $page, string $message): void {
+            expect(fn () => Knob::table('users')->paginate($perPage, $page))
+                ->toThrow(InvalidArgumentException::class, $message);
+        })->with([
+            'zero page size' => [0, 1, 'Items per page must be at least 1'],
+            'negative page size' => [-1, 1, 'Items per page must be at least 1'],
+            'zero page' => [10, 0, 'Page must be at least 1'],
+            'negative page' => [10, -1, 'Page must be at least 1'],
+        ]);
 
         it('inserts a record', function (): void {
             $inserted = Knob::table('users')->insert([
@@ -720,11 +886,32 @@ describe('Builder', function (): void {
                 ->and(Knob::table('users')->where('status', 'inactive')->count())->toBe(1);
         });
 
+        it('rejects empty updates', function (): void {
+            expect(fn () => Knob::table('users')->where('id', 1)->update([]))
+                ->toThrow(InvalidArgumentException::class, 'Update values cannot be empty');
+        });
+
+        it('blocks full table updates unless explicitly allowed', function (): void {
+            expect(fn () => Knob::table('users')->update(['status' => 'inactive']))
+                ->toThrow(RuntimeException::class, 'Full table update requires allowFullTable()');
+            expect(Knob::table('users')->where('status', 'inactive')->count())->toBe(0);
+
+            expect(Knob::table('users')->allowFullTable()->update(['status' => 'inactive']))->toBe(2);
+        });
+
         it('deletes matching records', function (): void {
             $deleted = Knob::table('users')->where('name', 'Jane')->delete();
 
             expect($deleted)->toBe(1)
                 ->and(Knob::table('users')->count())->toBe(1);
+        });
+
+        it('blocks full table deletes unless explicitly allowed', function (): void {
+            expect(fn () => Knob::table('users')->delete())
+                ->toThrow(RuntimeException::class, 'Full table delete requires allowFullTable()');
+            expect(Knob::table('users')->count())->toBe(2);
+
+            expect(Knob::table('users')->allowFullTable()->delete())->toBe(2);
         });
 
         it('truncates a SQLite table and preserves its autoincrement sequence', function (): void {
@@ -1160,8 +1347,20 @@ describe('Builder', function (): void {
             expect($sql['sql'])->toContain('NOT EXISTS (SELECT * FROM "posts" WHERE posts.user_id = users.id)');
         });
 
-        it('returns false when truncating without a table', function (): void {
-            expect(Knob::query()->truncate())->toBeFalse();
+        it('throws for write operations without a table', function (string $operation, string $message): void {
+            expect(fn () => match ($operation) {
+                'update' => Knob::query()->update(['name' => 'NoTable']),
+                'delete' => Knob::query()->delete(),
+                'truncate' => Knob::query()->truncate(),
+            })->toThrow(RuntimeException::class, $message);
+        })->with([
+            'update' => ['update', 'Table not set for update'],
+            'delete' => ['delete', 'Table not set for delete'],
+            'truncate' => ['truncate', 'Table not set for truncate'],
+        ]);
+
+        it('preserves full table write permission when cloning', function (): void {
+            expect(Knob::table('users')->allowFullTable()->clone()->delete())->toBe(2);
         });
 
         it('throws when inserting without a table', function (): void {

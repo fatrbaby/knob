@@ -103,76 +103,124 @@
 ### CR-006：统一 selectSub 的可空别名契约
 
 - 优先级：P1
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:57-72`、`src/Grammars/Grammar.php:74-81`
 - 问题：API 声明别名可空，但编译时无条件传给 `quoteIdentifier(string)`，导致 `TypeError`。
 - 建议：将别名改为必填，或在空别名时省略 `AS`。
 - 完成标准：接口声明、实现和测试行为一致。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：保留可空别名 API；`selectSub()` 未提供别名时只编译括号子查询，不再输出 `AS`。
+- 回归测试：覆盖原始 SQL、闭包和可复用 Builder 三种无别名输入，并保留有别名行为。
+- 验证命令：`vendor/bin/pest tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php tests/Unit/KnobTest.php`。
+- 决策备注：省略别名是 SQL 支持的合法形式，也避免对现有公开签名作破坏性调整。
 
 ### CR-007：忽略或拒绝空条件组
 
 - 优先级：P1
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:189-220`、`src/Grammars/Grammar.php:382-410`
 - 问题：空闭包条件会生成 `WHERE ` 或空的 `NOT` 表达式。
 - 建议：Builder 阶段不记录空组，或抛出参数异常。
 - 完成标准：覆盖空 `where`、`orWhere`、`whereNot` 条件组。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：Builder 在闭包执行后检查嵌套条件，空组不进入查询状态，避免生成空 WHERE 或 NOT 表达式。
+- 回归测试：覆盖空 `where`、`orWhere`、`whereNot`、`orWhereNot`，并验证调用前后 SQL 与绑定不变。
+- 验证命令：`vendor/bin/pest tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php tests/Unit/KnobTest.php`。
+- 决策备注：采用忽略空组的策略，便于调用方按条件动态构造查询。
 
 ### CR-008：修正复杂查询的分页总数
 
 - 优先级：P1
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:895-907`、`src/Builder.php:1041-1059`
 - 问题：分组、distinct、union 查询直接替换为 `COUNT(*)`，总数可能取到首个分组的行数。
 - 已验证：两个分组的数据返回 `total = 3`，正确值应为 `2`。
 - 建议：复杂查询使用 `SELECT COUNT(*) FROM (<原查询>) AS aggregate`。
 - 完成标准：覆盖 groupBy、distinct、union、having 分页总数。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：分页总数统一对移除外层排序和分页后的原查询建立派生表，再执行外层 `COUNT(*)`，保留原查询语义和绑定。
+- 回归测试：覆盖 groupBy、HAVING 过滤及绑定、DISTINCT、UNION ALL 的分页总数。
+- 验证命令：`vendor/bin/pest tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php tests/Unit/KnobTest.php`。
+- 决策备注：统一使用派生表计数，避免按查询形态分支后再次遗漏复杂组合。
 
 ### CR-009：校验分页参数
 
 - 优先级：P1
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:1041-1059`
 - 问题：`paginate(0, 1)` 触发 `DivisionByZeroError`，负页码会产生非法偏移。
 - 建议：要求 `perPage >= 1` 且 `page >= 1`。
 - 完成标准：非法输入抛出明确的参数异常并有测试。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：`paginate()` 在构造或执行查询前要求 `perPage >= 1` 且 `page >= 1`，否则抛出 `InvalidArgumentException`。
+- 回归测试：覆盖页大小和页码为零、负数的四种非法输入。
+- 验证命令：`vendor/bin/pest tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php tests/Unit/KnobTest.php`。
+- 决策备注：校验发生在计数和数据查询之前，非法调用不会访问数据库。
 
 ### CR-010：支持 value/pluck 的限定列名和别名
 
 - 优先级：P1
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:981-1017`
 - 问题：查询 `t.name` 后按 `$row['t.name']` 读取，而 PDO 通常返回键 `name`。
 - 已验证：`value('t.name')` 返回 null 并产生 warning，`pluck('t.name')` 返回空数组。
 - 建议：解析最终字段名，或为内部查询生成稳定别名。
 - 完成标准：覆盖限定列名、显式别名和表达式。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：`value()`、`pluck()` 根据限定名或显式别名解析 PDO 结果键；读取已选 raw 表达式的别名时保留原选择，不用结构化列覆盖表达式。
+- 回归测试：覆盖限定值列、限定键列、显式 `AS` 别名，以及已选 raw 表达式作为值列或键列。
+- 验证命令：`vendor/bin/pest tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php tests/Unit/KnobTest.php`。
+- 决策备注：表达式仍通过 `selectRaw()` 明确声明；结果读取只解析稳定的最终别名，不猜测任意 SQL 表达式。
 
 ### CR-011：校验 BETWEEN 参数数量
 
 - 优先级：P1
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:317-367`、`src/Grammars/Grammar.php:310-321`
 - 问题：少于两个值会产生 undefined array key，并绑定 null；多余值被静默忽略。
 - 建议：Builder 层要求恰好两个值。
 - 完成标准：不足和超出两个值均有明确行为和测试。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：四个 BETWEEN 入口共用 Builder 校验，值数量不等于两个时在修改查询状态前抛出 `InvalidArgumentException`。
+- 回归测试：覆盖 `whereBetween`、`orWhereBetween`、`whereNotBetween`、`orWhereNotBetween` 的不足和超出输入，覆盖两元素关联数组归一化，并验证失败后状态不变。
+- 验证命令：`vendor/bin/pest tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php tests/Unit/KnobTest.php`。
+- 决策备注：拒绝静默截断多余值，也不允许用 null 补足缺失值。
 
 ### CR-012：明确危险写操作的保护策略
 
 - 优先级：P1
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Builder.php:745-868`、`src/Grammars/Grammar.php:618-658`
 - 问题：`update([])` 生成空 SET；`update()`、`delete()` 默认允许无 WHERE 全表操作；`truncate()` 无表时静默返回 false，与其他写方法契约不一致。
 - 建议：拒绝空更新；评估默认禁止无条件写操作，提供显式 `allowFullTable()`；统一无表错误行为。
 - 完成标准：危险边界被明确记录并有回归测试。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：拒绝空更新；无 WHERE 的 update/delete 默认抛错，只有显式调用 `allowFullTable()` 才放行；无表 truncate 与其他写方法统一抛错；授权状态随 Builder 克隆保留。
+- 回归测试：覆盖空更新、默认拦截且数据不变、显式全表更新/删除、三种无表写操作和授权克隆。
+- 验证命令：`vendor/bin/pest tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php tests/Unit/KnobTest.php`。
+- 决策备注：`truncate()` 本身已明确表达全表清空意图，不额外要求 `allowFullTable()`；该授权仅适用于 update/delete。
 
 ### CR-013：增强事务异常与嵌套事务处理
 
 - 优先级：P1
-- 状态：待处理
+- 状态：已完成
 - 位置：`src/Knob.php:42-70`
 - 问题：无条件开启、提交、回滚；嵌套事务会失败，回滚异常可能覆盖原始异常。
 - 建议：检查 `inTransaction()` 和开始事务结果；明确嵌套策略，可使用 savepoint；保留原始异常上下文。
 - 完成标准：覆盖成功、回调异常、提交异常、嵌套调用。
+- 处理人：Codex
+- 处理日期：2026-09-04
+- 变更摘要：检查开始和提交结果；已有事务时按数据库方言使用 savepoint 隔离嵌套作用域；失败时只回滚当前作用域；回滚再次失败时抛出组合信息，并以原异常作为 previous context。
+- 回归测试：覆盖成功提交及返回值、回调异常回滚、嵌套失败仅回滚内层、开始失败、提交返回失败、提交异常、回滚二次失败的异常上下文，以及四种数据库的 savepoint/rollback 命令。
+- 验证命令：`vendor/bin/pest tests/Unit/KnobTest.php`；`vendor/bin/pest tests/Unit/BuilderTest.php tests/Unit/GrammarTest.php tests/Unit/KnobTest.php`。
+- 决策备注：MySQL、PostgreSQL、SQLite 使用 `SAVEPOINT`/`ROLLBACK TO SAVEPOINT`/`RELEASE SAVEPOINT`；SQL Server 使用 `SAVE TRANSACTION`/`ROLLBACK TRANSACTION`，且不执行其不支持的 release。
 
 ### CR-014：清理 PHPStan Level 8 错误
 

@@ -22,6 +22,7 @@ class Builder
     private ?int $limit = null;
     private ?int $offset = null;
     private array $unions = [];
+    private bool $allowFullTable = false;
 
     private readonly Grammar $grammar;
 
@@ -50,6 +51,13 @@ class Builder
     public function distinct(): Builder
     {
         $this->distinct = true;
+
+        return $this;
+    }
+
+    public function allowFullTable(): Builder
+    {
+        $this->allowFullTable = true;
 
         return $this;
     }
@@ -199,16 +207,7 @@ class Builder
     public function where(string|Closure $column, mixed $operator = null, mixed $value = null): Builder
     {
         if ($column instanceof Closure) {
-            $subBuilder = new self($this->connection);
-            $column($subBuilder);
-
-            $this->wheres[] = [
-                'type' => 'group',
-                'wheres' => $subBuilder->wheres,
-                'boolean' => 'AND',
-            ];
-
-            return $this;
+            return $this->addWhereGroupClause($column, 'AND');
         }
 
         return $this->addWhereClause($column, $operator, $value, 'AND', func_num_args());
@@ -217,16 +216,7 @@ class Builder
     public function orWhere(string|Closure $column, mixed $operator = null, mixed $value = null): Builder
     {
         if ($column instanceof Closure) {
-            $subBuilder = new self($this->connection);
-            $column($subBuilder);
-
-            $this->wheres[] = [
-                'type' => 'group',
-                'wheres' => $subBuilder->wheres,
-                'boolean' => 'OR',
-            ];
-
-            return $this;
+            return $this->addWhereGroupClause($column, 'OR');
         }
 
         return $this->addWhereClause($column, $operator, $value, 'OR', func_num_args());
@@ -326,51 +316,36 @@ class Builder
 
     public function whereBetween(string $column, array $values): Builder
     {
-        $this->wheres[] = [
-            'type' => 'between',
-            'column' => $column,
-            'values' => $values,
-            'boolean' => 'AND',
-            'not' => false,
-        ];
-
-        return $this;
+        return $this->addBetweenClause($column, $values, 'AND', false);
     }
 
     public function orWhereBetween(string $column, array $values): Builder
     {
-        $this->wheres[] = [
-            'type' => 'between',
-            'column' => $column,
-            'values' => $values,
-            'boolean' => 'OR',
-            'not' => false,
-        ];
-
-        return $this;
+        return $this->addBetweenClause($column, $values, 'OR', false);
     }
 
     public function whereNotBetween(string $column, array $values): Builder
     {
-        $this->wheres[] = [
-            'type' => 'between',
-            'column' => $column,
-            'values' => $values,
-            'boolean' => 'AND',
-            'not' => true,
-        ];
-
-        return $this;
+        return $this->addBetweenClause($column, $values, 'AND', true);
     }
 
     public function orWhereNotBetween(string $column, array $values): Builder
     {
+        return $this->addBetweenClause($column, $values, 'OR', true);
+    }
+
+    private function addBetweenClause(string $column, array $values, string $boolean, bool $not): Builder
+    {
+        if (count($values) !== 2) {
+            throw new \InvalidArgumentException('BETWEEN requires exactly two values');
+        }
+
         $this->wheres[] = [
             'type' => 'between',
             'column' => $column,
-            'values' => $values,
-            'boolean' => 'OR',
-            'not' => true,
+            'values' => array_values($values),
+            'boolean' => $boolean,
+            'not' => $not,
         ];
 
         return $this;
@@ -801,6 +776,14 @@ class Builder
             throw new \RuntimeException('Table not set for update');
         }
 
+        if ($values === []) {
+            throw new \InvalidArgumentException('Update values cannot be empty');
+        }
+
+        if ($this->wheres === [] && ! $this->allowFullTable) {
+            throw new \RuntimeException('Full table update requires allowFullTable()');
+        }
+
         $components = [
             'table' => $this->table,
             'values' => $values,
@@ -851,6 +834,10 @@ class Builder
             throw new \RuntimeException('Table not set for delete');
         }
 
+        if ($this->wheres === [] && ! $this->allowFullTable) {
+            throw new \RuntimeException('Full table delete requires allowFullTable()');
+        }
+
         $components = [
             'table' => $this->table,
             'wheres' => $this->wheres,
@@ -869,7 +856,7 @@ class Builder
     public function truncate(): bool
     {
         if (empty($this->table)) {
-            return false;
+            throw new \RuntimeException('Table not set for truncate');
         }
 
         $sql = $this->grammar->compileTruncate($this->table);
@@ -995,7 +982,10 @@ class Builder
     public function value(string $column): mixed
     {
         $builder = $this->clone();
-        $builder->columns = [$column];
+        $resultColumn = $this->resultColumnName($column);
+        $rawColumn = $builder->selectedRawColumn($resultColumn);
+
+        $builder->columns = [$rawColumn ?? $column];
         $builder->limit = 1;
 
         $sql = $builder->grammar->compileSelect($builder->getComponents());
@@ -1007,13 +997,18 @@ class Builder
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        return $row === false ? null : $row[$column];
+        return $row === false ? null : $row[$resultColumn];
     }
 
     public function pluck(string $column, ?string $key = null): Collection
     {
         $builder = $this->clone();
-        $builder->columns = $key ? [$column, $key] : [$column];
+        $columnKey = $this->resultColumnName($column);
+        $keyKey = $key === null ? null : $this->resultColumnName($key);
+        $selectedColumn = $builder->selectedRawColumn($columnKey) ?? $column;
+        $selectedKey = $keyKey === null ? null : ($builder->selectedRawColumn($keyKey) ?? $key);
+
+        $builder->columns = $selectedKey === null ? [$selectedColumn] : [$selectedColumn, $selectedKey];
 
         $sql = $builder->grammar->compileSelect($builder->getComponents());
         $bindings = $builder->grammar->getBindings();
@@ -1024,11 +1019,11 @@ class Builder
 
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        if ($key) {
-            return new Collection(array_column($results, $column, $key));
+        if ($keyKey !== null) {
+            return new Collection(array_column($results, $columnKey, $keyKey));
         }
 
-        return new Collection(array_column($results, $column));
+        return new Collection(array_column($results, $columnKey));
     }
 
     public function exists(): bool
@@ -1054,10 +1049,17 @@ class Builder
 
     public function paginate(int $perPage = 15, int $page = 1): array
     {
-        $countBuilder = $this->clone();
+        if ($perPage < 1) {
+            throw new \InvalidArgumentException('Items per page must be at least 1');
+        }
+
+        if ($page < 1) {
+            throw new \InvalidArgumentException('Page must be at least 1');
+        }
+
         $itemsBuilder = $this->clone();
 
-        $total = $countBuilder->count();
+        $total = $this->paginationTotal();
         $items = $itemsBuilder
             ->limit($perPage)
             ->offset(($page - 1) * $perPage)
@@ -1071,6 +1073,24 @@ class Builder
             'current_page' => $page,
             'last_page' => (int) ceil($total / $perPage),
         ];
+    }
+
+    private function paginationTotal(): int
+    {
+        $builder = $this->clone();
+        $builder->orders = [];
+        $builder->limit = null;
+        $builder->offset = null;
+
+        $sql = $builder->grammar->compileSelect($builder->getComponents());
+        $bindings = $builder->grammar->getBindings();
+        $builder->grammar->resetBindings();
+        $alias = $builder->grammar->wrapIdentifier('__knob_aggregate');
+
+        $stmt = $this->connection->prepare("SELECT COUNT(*) FROM ({$sql}) AS {$alias}");
+        $stmt->execute($bindings);
+
+        return (int) $stmt->fetchColumn();
     }
 
     private function getComponents(): array
@@ -1180,6 +1200,36 @@ class Builder
         return $builder->toSqlParts();
     }
 
+    private function resultColumnName(string $column): string
+    {
+        $aliasParts = preg_split('/\s+as\s+/i', trim($column), 2);
+
+        if (isset($aliasParts[1])) {
+            return $aliasParts[1];
+        }
+
+        $qualifiedParts = explode('.', $aliasParts[0]);
+
+        return $qualifiedParts[array_key_last($qualifiedParts)];
+    }
+
+    private function selectedRawColumn(string $column): ?array
+    {
+        foreach ($this->columns as $selected) {
+            if (! is_array($selected) || ($selected['type'] ?? null) !== 'raw') {
+                continue;
+            }
+
+            $parts = preg_split('/\s+as\s+/i', trim($selected['sql']), 2);
+
+            if (($parts[1] ?? null) === $column) {
+                return $selected;
+            }
+        }
+
+        return null;
+    }
+
     private function addWhereClause(string $column, mixed $operator, mixed $value, string $boolean, int $argumentCount): Builder
     {
         if ($argumentCount === 2) {
@@ -1215,8 +1265,30 @@ class Builder
         $subBuilder = new self($this->connection);
         $callback($subBuilder);
 
+        if ($subBuilder->wheres === []) {
+            return $this;
+        }
+
         $this->wheres[] = [
             'type' => 'not',
+            'wheres' => $subBuilder->wheres,
+            'boolean' => $boolean,
+        ];
+
+        return $this;
+    }
+
+    private function addWhereGroupClause(Closure $callback, string $boolean): Builder
+    {
+        $subBuilder = new self($this->connection);
+        $callback($subBuilder);
+
+        if ($subBuilder->wheres === []) {
+            return $this;
+        }
+
+        $this->wheres[] = [
+            'type' => 'group',
             'wheres' => $subBuilder->wheres,
             'boolean' => $boolean,
         ];
@@ -1287,6 +1359,7 @@ class Builder
         $builder->limit = $this->limit;
         $builder->offset = $this->offset;
         $builder->unions = $this->unions;
+        $builder->allowFullTable = $this->allowFullTable;
 
         return $builder;
     }

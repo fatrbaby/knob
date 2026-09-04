@@ -81,6 +81,10 @@ abstract class Grammar
                     return $column['sql'];
                 }
 
+                if (($column['alias'] ?? null) === null) {
+                    return $column['column'];
+                }
+
                 return $column['column'] . ' AS ' . $this->wrapIdentifier($column['alias']);
             }
 
